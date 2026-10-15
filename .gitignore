@@ -1,4 +1,3 @@
-```gitignore
 # Dependencies
 node_modules/
 .pnp
@@ -23,6 +22,10 @@ dist/
 
 # Testing and coverage
 coverage/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
 
 # Environment files and secrets
 .env*
@@ -38,6 +41,12 @@ coverage/
 # Local Claude settings and instructions
 CLAUDE.local.md
 .claude/settings.local.json
+
+# IDEs and Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
 
 # Local databases
 *.sqlite
@@ -57,4 +66,3 @@ next-env.d.ts
 # Operating system files
 .DS_Store
 Thumbs.db
-```

@@ -1,0 +1,418 @@
+"use client";
+
+import { useState } from "react";
+import { createReactBlockSpec } from "@blocknote/react";
+import { ArrowDown, ArrowUp, Plus, Settings2, Trash2, X } from "lucide-react";
+
+export type ColumnType = "text" | "number" | "checkbox" | "date" | "select";
+type CellValue = string | number | boolean | null;
+
+interface Column {
+  id: string;
+  name: string;
+  type: ColumnType;
+  options?: string[];
+}
+
+interface Row {
+  id: string;
+  cells: Record<string, CellValue>;
+}
+
+interface TableData {
+  columns: Column[];
+  rows: Row[];
+}
+
+const COLUMN_TYPES: ColumnType[] = ["text", "number", "checkbox", "date", "select"];
+
+const newId = () => crypto.randomUUID();
+
+// Fixed ids keep the fallback stable across renders when a block has no saved data yet.
+function defaultData(): TableData {
+  return {
+    columns: [
+      { id: "col-name", name: "Name", type: "text" },
+      { id: "col-status", name: "Status", type: "select", options: ["Todo", "In progress", "Done"] },
+    ],
+    rows: [{ id: "row-1", cells: {} }],
+  };
+}
+
+export const DEFAULT_TABLE_DATA = () => JSON.stringify(defaultData());
+
+function parseData(raw: string): TableData {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.columns) && Array.isArray(parsed?.rows)) return parsed;
+  } catch {}
+  return defaultData();
+}
+
+function emptyValue(type: ColumnType): CellValue {
+  return type === "checkbox" ? false : null;
+}
+
+function compare(a: CellValue, b: CellValue, type: ColumnType) {
+  const aEmpty = a === null || a === "" || a === undefined;
+  const bEmpty = b === null || b === "" || b === undefined;
+  if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+  if (type === "number") return Number(a) - Number(b);
+  if (type === "checkbox") return Number(Boolean(a)) - Number(Boolean(b));
+  return String(a).localeCompare(String(b));
+}
+
+function matchesFilter(value: CellValue, col: Column, filter: string) {
+  if (col.type === "checkbox") return Boolean(value) === (filter === "true");
+  return String(value ?? "").toLowerCase().includes(filter.toLowerCase());
+}
+
+const inputClass =
+  "w-full bg-transparent px-2 py-1.5 text-sm text-neutral-200 outline-none focus:bg-neutral-800/60";
+
+function Cell({
+  col,
+  value,
+  editable,
+  onChange,
+}: {
+  col: Column;
+  value: CellValue;
+  editable: boolean;
+  onChange: (v: CellValue) => void;
+}) {
+  if (col.type === "checkbox") {
+    return (
+      <div className="px-2 py-1.5">
+        <input
+          type="checkbox"
+          disabled={!editable}
+          checked={Boolean(value)}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+      </div>
+    );
+  }
+  if (col.type === "select") {
+    return (
+      <select
+        className={inputClass}
+        disabled={!editable}
+        value={String(value ?? "")}
+        onChange={(e) => onChange(e.target.value || null)}
+      >
+        <option value="">—</option>
+        {(col.options ?? []).map((o) => (
+          <option key={o} value={o} className="bg-neutral-900">
+            {o}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  // Text-like inputs commit on blur/Enter so each keystroke isn't a full document save.
+  const commit = (raw: string) => {
+    if (raw === "") return onChange(null);
+    onChange(col.type === "number" ? Number(raw) : raw);
+  };
+  return (
+    <input
+      className={inputClass}
+      type={col.type === "number" ? "number" : col.type === "date" ? "date" : "text"}
+      readOnly={!editable}
+      key={String(value ?? "")}
+      defaultValue={value === null || value === undefined ? "" : String(value)}
+      onBlur={(e) => {
+        if (e.target.value !== String(value ?? "")) commit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+    />
+  );
+}
+
+function DataTable({
+  data,
+  editable,
+  onChange,
+}: {
+  data: TableData;
+  editable: boolean;
+  onChange: (d: TableData) => void;
+}) {
+  const [sort, setSort] = useState<{ colId: string; dir: "asc" | "desc" } | null>(null);
+  const [filter, setFilter] = useState<{ colId: string; value: string } | null>(null);
+  const [openCol, setOpenCol] = useState<string | null>(null);
+
+  const { columns, rows } = data;
+  const sortCol = columns.find((c) => c.id === sort?.colId);
+  const filterCol = columns.find((c) => c.id === filter?.colId);
+
+  let visible = rows;
+  if (filterCol && filter && filter.value !== "") {
+    visible = visible.filter((r) => matchesFilter(r.cells[filterCol.id] ?? null, filterCol, filter.value));
+  }
+  if (sortCol && sort) {
+    const sign = sort.dir === "asc" ? 1 : -1;
+    visible = [...visible].sort(
+      (a, b) => sign * compare(a.cells[sortCol.id] ?? null, b.cells[sortCol.id] ?? null, sortCol.type)
+    );
+  }
+
+  const updateColumn = (id: string, patch: Partial<Column>) =>
+    onChange({ ...data, columns: columns.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+
+  const changeType = (col: Column, type: ColumnType) => {
+    // Cell values from the old type aren't meaningful for the new one, so reset them.
+    onChange({
+      columns: columns.map((c) =>
+        c.id === col.id ? { ...c, type, options: type === "select" ? c.options ?? ["Option 1"] : undefined } : c
+      ),
+      rows: rows.map((r) => ({ ...r, cells: { ...r.cells, [col.id]: emptyValue(type) } })),
+    });
+    if (filter?.colId === col.id) setFilter(null);
+  };
+
+  const deleteColumn = (id: string) => {
+    onChange({
+      columns: columns.filter((c) => c.id !== id),
+      rows: rows.map((r) => {
+        const { [id]: _removed, ...cells } = r.cells;
+        return { ...r, cells };
+      }),
+    });
+    if (sort?.colId === id) setSort(null);
+    if (filter?.colId === id) setFilter(null);
+    setOpenCol(null);
+  };
+
+  const addColumn = () =>
+    onChange({ ...data, columns: [...columns, { id: newId(), name: `Column ${columns.length + 1}`, type: "text" }] });
+
+  const addRow = () => onChange({ ...data, rows: [...rows, { id: newId(), cells: {} }] });
+
+  const setCell = (rowId: string, colId: string, v: CellValue) =>
+    onChange({
+      ...data,
+      rows: rows.map((r) => (r.id === rowId ? { ...r, cells: { ...r.cells, [colId]: v } } : r)),
+    });
+
+  const toggleSort = (colId: string) =>
+    setSort((s) =>
+      s?.colId !== colId ? { colId, dir: "asc" } : s.dir === "asc" ? { colId, dir: "desc" } : null
+    );
+
+  return (
+    <div className="my-2 w-full rounded-lg border border-neutral-800 bg-neutral-900/40 text-neutral-200">
+      <div className="flex items-center gap-2 border-b border-neutral-800 px-2 py-1.5 text-xs text-neutral-400">
+        <span>Filter</span>
+        <select
+          className="rounded bg-neutral-800 px-1.5 py-1 text-neutral-200"
+          value={filter?.colId ?? ""}
+          onChange={(e) => setFilter(e.target.value ? { colId: e.target.value, value: "" } : null)}
+        >
+          <option value="">None</option>
+          {columns.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        {filterCol &&
+          (filterCol.type === "checkbox" ? (
+            <select
+              className="rounded bg-neutral-800 px-1.5 py-1 text-neutral-200"
+              value={filter?.value ?? ""}
+              onChange={(e) => setFilter({ colId: filterCol.id, value: e.target.value })}
+            >
+              <option value="">Any</option>
+              <option value="true">Checked</option>
+              <option value="false">Unchecked</option>
+            </select>
+          ) : (
+            <input
+              className="rounded bg-neutral-800 px-1.5 py-1 text-neutral-200 outline-none"
+              placeholder="contains…"
+              value={filter?.value ?? ""}
+              onChange={(e) => setFilter({ colId: filterCol.id, value: e.target.value })}
+            />
+          ))}
+        {filter && (
+          <button onClick={() => setFilter(null)} aria-label="Clear filter">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col.id} className="relative min-w-36 border-b border-r border-neutral-800 text-left font-medium">
+                  <div className="flex items-center">
+                    <input
+                      className={`${inputClass} font-medium`}
+                      readOnly={!editable}
+                      key={col.name}
+                      defaultValue={col.name}
+                      onBlur={(e) => {
+                        const name = e.target.value.trim();
+                        if (name && name !== col.name) updateColumn(col.id, { name });
+                        else e.target.value = col.name;
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                      }}
+                    />
+                    <button
+                      className="px-1 text-neutral-500 hover:text-neutral-200"
+                      onClick={() => toggleSort(col.id)}
+                      aria-label={`Sort by ${col.name}`}
+                    >
+                      {sort?.colId === col.id ? (
+                        sort.dir === "asc" ? (
+                          <ArrowUp className="h-3.5 w-3.5 text-purple-400" />
+                        ) : (
+                          <ArrowDown className="h-3.5 w-3.5 text-purple-400" />
+                        )
+                      ) : (
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                    {editable && (
+                      <button
+                        className="px-1 text-neutral-500 hover:text-neutral-200"
+                        onClick={() => setOpenCol(openCol === col.id ? null : col.id)}
+                        aria-label={`Configure ${col.name}`}
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {openCol === col.id && (
+                    <div className="absolute left-0 top-full z-20 mt-1 w-56 space-y-2 rounded-md border border-neutral-700 bg-neutral-900 p-2 text-xs shadow-lg">
+                      <label className="block text-neutral-400">
+                        Type
+                        <select
+                          className="mt-1 w-full rounded bg-neutral-800 px-1.5 py-1 text-neutral-200"
+                          value={col.type}
+                          onChange={(e) => changeType(col, e.target.value as ColumnType)}
+                        >
+                          {COLUMN_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {col.type === "select" && (
+                        <label className="block text-neutral-400">
+                          Options (comma separated)
+                          <input
+                            className="mt-1 w-full rounded bg-neutral-800 px-1.5 py-1 text-neutral-200 outline-none"
+                            key={(col.options ?? []).join(",")}
+                            defaultValue={(col.options ?? []).join(", ")}
+                            onBlur={(e) =>
+                              updateColumn(col.id, {
+                                options: e.target.value
+                                  .split(",")
+                                  .map((o) => o.trim())
+                                  .filter(Boolean),
+                              })
+                            }
+                          />
+                        </label>
+                      )}
+                      <button
+                        className="flex items-center gap-1 text-red-400 hover:text-red-300"
+                        onClick={() => deleteColumn(col.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete column
+                      </button>
+                    </div>
+                  )}
+                </th>
+              ))}
+              {editable && (
+                <th className="w-10 border-b border-neutral-800">
+                  <button
+                    className="px-2 py-1.5 text-neutral-500 hover:text-neutral-200"
+                    onClick={addColumn}
+                    aria-label="Add column"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((row) => (
+              <tr key={row.id} className="group">
+                {columns.map((col) => (
+                  <td key={col.id} className="border-b border-r border-neutral-800">
+                    <Cell
+                      col={col}
+                      value={row.cells[col.id] ?? null}
+                      editable={editable}
+                      onChange={(v) => setCell(row.id, col.id, v)}
+                    />
+                  </td>
+                ))}
+                {editable && (
+                  <td className="border-b border-neutral-800 text-center">
+                    <button
+                      className="px-2 text-neutral-600 opacity-0 hover:text-red-400 group-hover:opacity-100"
+                      onClick={() => onChange({ ...data, rows: rows.filter((r) => r.id !== row.id) })}
+                      aria-label="Delete row"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {editable && (
+        <button
+          className="flex w-full items-center gap-1 px-2 py-1.5 text-xs text-neutral-500 hover:text-neutral-200"
+          onClick={addRow}
+        >
+          <Plus className="h-3.5 w-3.5" /> New row
+        </button>
+      )}
+    </div>
+  );
+}
+
+export const dataTableBlock = createReactBlockSpec(
+  {
+    type: "dataTable",
+    propSchema: {
+      // JSON-serialised TableData: { columns, rows }. Lives in the block, so it persists with notes.content.
+      data: { default: "" },
+    },
+    content: "none",
+  },
+  {
+    render: ({ block, editor }) => {
+      const data = parseData(block.props.data);
+      return (
+        <div className="w-full" contentEditable={false}>
+          <DataTable
+            data={data}
+            editable={editor.isEditable}
+            onChange={(next) =>
+              editor.updateBlock(block, { props: { data: JSON.stringify(next) } })
+            }
+          />
+        </div>
+      );
+    },
+  }
+);

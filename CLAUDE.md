@@ -40,3 +40,18 @@ Orbit is a Notion-style notes app with an AI assistant aimed at ADHD students.
 - `app/api/chat/route.ts` uses `streamText` and returns `toTextStreamResponse()`, which is a plain text stream, not the AI SDK UI message protocol. `AiSidebar` reads it manually with `res.body.getReader()` instead of `useChat`. Chat history is client state keyed by note id and isn't persisted. The current note's content goes into the system prompt.
 - `app/api/ai-edit/route.ts` uses `generateText` to return a full rewritten document. `NoteWorkspace` has `proposedContent` state wired to `DiffReviewModal` for accept/reject, but nothing calls `setProposedContent` yet. `InlineAiWidget` calls `/api/ai-edit` but isn't mounted anywhere, and neither is `AgentDock`.
 - Both routes use `google("gemini-3.8-flash")` and share the "Orbit AI" system persona.
+
+
+## Product Reference
+
+The full Orbit product specification is located at `docs/ORBIT_PRODUCT_REFERENCE.docx`.
+
+Consult this document when relevant to understand Orbit's product vision, design principles, planned features, and long-term architecture.
+
+Important rules:
+- Treat the existing source code as the authority on what has actually been implemented.
+- Treat the product reference as the source of product goals, not proof that planned features already exist.
+- Do not rewrite the existing architecture simply to match a proposed future architecture.
+- Implement only the features explicitly requested by the user.
+- Do not introduce AI features unless explicitly requested.
+- Prefer small, maintainable changes that preserve existing functionality.

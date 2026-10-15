@@ -27,11 +27,14 @@ export function IconPicker({
   currentColor,
   onSelectIcon,
   onRemoveIcon,
+  compact = false,
 }: {
   currentIcon?: string | null;
   currentColor?: string | null;
   onSelectIcon: (icon: string, color: string) => void;
   onRemoveIcon: () => void;
+  // Small trigger for use inside custom blocks; shows a placeholder glyph until an icon is chosen.
+  compact?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedIcon, setSelectedIcon] = useState(currentIcon || "FileText");
@@ -63,13 +66,25 @@ export function IconPicker({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2.5 rounded-xl hover:bg-neutral-800/60 transition-colors flex items-center justify-center cursor-pointer"
+        aria-label={compact ? (currentIcon ? "Block icon" : "Choose icon") : undefined}
+        className={
+          compact
+            ? "p-1 rounded hover:bg-neutral-800/60 transition-colors flex items-center justify-center cursor-pointer"
+            : "p-2.5 rounded-xl hover:bg-neutral-800/60 transition-colors flex items-center justify-center cursor-pointer"
+        }
       >
-        <DynamicIcon
-          name={selectedIcon}
-          color={selectedColor}
-          className="w-10 h-10"
-        />
+        {compact && !currentIcon ? (
+          <Icons.SmilePlus className="w-4 h-4 text-neutral-400" />
+        ) : compact && !(selectedIcon in Icons) ? (
+          // Previously saved emoji values are shown as-is rather than falling back to a default icon.
+          <span className="text-base leading-none">{selectedIcon}</span>
+        ) : (
+          <DynamicIcon
+            name={selectedIcon}
+            color={selectedColor}
+            className={compact ? "w-4 h-4" : "w-10 h-10"}
+          />
+        )}
       </button>
 
       {isOpen && (

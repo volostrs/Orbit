@@ -13,15 +13,19 @@ import {
   SuggestionMenuController,
   useCreateBlockNote,
 } from "@blocknote/react";
-import { Table2 } from "lucide-react";
+import { BarChart3, CalendarCheck, Table2 } from "lucide-react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { dataTableBlock, DEFAULT_TABLE_DATA } from "./blocks/DataTableBlock";
+import { habitTrackerBlock, DEFAULT_HABIT_DATA } from "./blocks/HabitTrackerBlock";
+import { chartBlock, DEFAULT_CHART_DATA } from "./blocks/ChartBlock";
 
 const schema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     dataTable: dataTableBlock(),
+    habitTracker: habitTrackerBlock(),
+    chart: chartBlock(),
   },
 });
 
@@ -51,26 +55,50 @@ export default function BlockEditor({ initialContent, onChange }: BlockEditorPro
       >
         <SuggestionMenuController
           triggerCharacter="/"
-          getItems={async (query) =>
-            filterSuggestionItems(
-              [
-                ...getDefaultReactSlashMenuItems(editor),
-                {
-                  title: "Data table",
-                  subtext: "Configurable table with typed columns",
-                  aliases: ["table", "database", "grid"],
-                  group: "Advanced",
-                  icon: <Table2 size={18} />,
-                  onItemClick: () =>
-                    insertOrUpdateBlockForSlashMenu(editor, {
-                      type: "dataTable",
-                      props: { data: DEFAULT_TABLE_DATA() },
-                    }),
-                },
-              ],
-              query
-            )
-          }
+          getItems={async (query) => {
+            const items = getDefaultReactSlashMenuItems(editor);
+            const dataTableItem = {
+              title: "Data table",
+              subtext: "Configurable table with typed columns",
+              aliases: ["table", "database", "grid"],
+              group: "Advanced",
+              icon: <Table2 size={18} />,
+              onItemClick: () =>
+                insertOrUpdateBlockForSlashMenu(editor, {
+                  type: "dataTable",
+                  props: { data: DEFAULT_TABLE_DATA() },
+                }),
+            };
+            // Menu headings are emitted whenever the group changes between adjacent items, so the
+            // item must sit next to the built-in Table item (same group) to avoid a second heading.
+            const tableIndex = items.findIndex((i) => (i as { key?: string }).key === "table");
+            const habitItem = {
+              title: "Habit tracker",
+              subtext: "Weekly habit check-ins",
+              aliases: ["habit", "habits", "tracker", "routine"],
+              group: "Advanced",
+              icon: <CalendarCheck size={18} />,
+              onItemClick: () =>
+                insertOrUpdateBlockForSlashMenu(editor, {
+                  type: "habitTracker",
+                  props: { data: DEFAULT_HABIT_DATA() },
+                }),
+            };
+            const chartItem = {
+              title: "Chart",
+              subtext: "Bar, line or pie chart",
+              aliases: ["chart", "graph", "bar", "line", "pie"],
+              group: "Advanced",
+              icon: <BarChart3 size={18} />,
+              onItemClick: () =>
+                insertOrUpdateBlockForSlashMenu(editor, {
+                  type: "chart",
+                  props: { data: DEFAULT_CHART_DATA() },
+                }),
+            };
+            items.splice(tableIndex === -1 ? items.length : tableIndex + 1, 0, dataTableItem, habitItem, chartItem);
+            return filterSuggestionItems(items, query);
+          }}
         />
       </BlockNoteView>
     </div>

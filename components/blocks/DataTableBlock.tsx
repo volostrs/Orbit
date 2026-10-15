@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
 import { ArrowDown, ArrowUp, Plus, Settings2, Trash2, X } from "lucide-react";
+import { frameStyle, StyleMenu } from "./blockStyle";
 
 export type ColumnType = "text" | "number" | "checkbox" | "date" | "select";
 type CellValue = string | number | boolean | null;
@@ -136,10 +137,18 @@ function DataTable({
   data,
   editable,
   onChange,
+  color,
+  icon,
+  iconColor,
+  onStyleChange,
 }: {
   data: TableData;
   editable: boolean;
   onChange: (d: TableData) => void;
+  color: string;
+  icon: string;
+  iconColor: string;
+  onStyleChange: (patch: { color?: string; icon?: string; iconColor?: string }) => void;
 }) {
   const [sort, setSort] = useState<{ colId: string; dir: "asc" | "desc" } | null>(null);
   const [filter, setFilter] = useState<{ colId: string; value: string } | null>(null);
@@ -204,8 +213,12 @@ function DataTable({
     );
 
   return (
-    <div className="my-2 w-full rounded-lg border border-neutral-800 bg-neutral-900/40 text-neutral-200">
+    <div
+      className="my-2 w-full rounded-lg border border-neutral-800 bg-neutral-900/40 text-neutral-200"
+      style={frameStyle(color)}
+    >
       <div className="flex items-center gap-2 border-b border-neutral-800 px-2 py-1.5 text-xs text-neutral-400">
+        <StyleMenu color={color} icon={icon} iconColor={iconColor} editable={editable} onChange={onStyleChange} />
         <span>Filter</span>
         <select
           className="rounded bg-neutral-800 px-1.5 py-1 text-neutral-200"
@@ -246,7 +259,7 @@ function DataTable({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
+        <table className="w-full border-collapse" style={{ minWidth: `${columns.length * 9 + 2}rem` }}>
           <thead>
             <tr>
               {columns.map((col) => (
@@ -396,6 +409,10 @@ export const dataTableBlock = createReactBlockSpec(
     propSchema: {
       // JSON-serialised TableData: { columns, rows }. Lives in the block, so it persists with notes.content.
       data: { default: "" },
+      // Optional appearance; empty strings keep the original look.
+      color: { default: "" },
+      icon: { default: "" },
+      iconColor: { default: "" },
     },
     content: "none",
   },
@@ -406,6 +423,10 @@ export const dataTableBlock = createReactBlockSpec(
         <div className="w-full" contentEditable={false}>
           <DataTable
             data={data}
+            color={block.props.color}
+            icon={block.props.icon}
+          iconColor={block.props.iconColor}
+            onStyleChange={(patch) => editor.updateBlock(block, { props: patch })}
             editable={editor.isEditable}
             onChange={(next) =>
               editor.updateBlock(block, { props: { data: JSON.stringify(next) } })

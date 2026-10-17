@@ -177,7 +177,9 @@ export default async function Page({
       </aside>
 
       {/* Workspace Client Wrapper (Editor + AI Sidebar + Diff Preview Modal) */}
+      {/* Keyed so per-note client state (content snapshot, proposed AI edits) resets on note switch. */}
       <NoteWorkspace
+        key={activeNote?.id ?? "none"}
         initialNote={activeNote}
         notebooks={notebooks}
         isAiOpen={isAiOpen}

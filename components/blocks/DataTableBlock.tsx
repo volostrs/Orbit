@@ -45,7 +45,21 @@ export const DEFAULT_TABLE_DATA = () => JSON.stringify(defaultData());
 function parseData(raw: string): TableData {
   try {
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed?.columns) && Array.isArray(parsed?.rows)) return parsed;
+    if (Array.isArray(parsed?.columns) && Array.isArray(parsed?.rows)) {
+      // Tolerate older saves: fill in missing ids, types and cell maps.
+      return {
+        columns: parsed.columns.map((c: Partial<Column>, i: number) => ({
+          ...c,
+          id: c.id ?? `col-legacy-${i}`,
+          name: c.name ?? `Column ${i + 1}`,
+          type: COLUMN_TYPES.includes(c.type as ColumnType) ? c.type : "text",
+        })),
+        rows: parsed.rows.map((r: Partial<Row>, i: number) => ({
+          id: r.id ?? `row-legacy-${i}`,
+          cells: r.cells ?? {},
+        })),
+      };
+    }
   } catch {}
   return defaultData();
 }
@@ -103,7 +117,8 @@ function Cell({
         onChange={(e) => onChange(e.target.value || null)}
       >
         <option value="">—</option>
-        {(col.options ?? []).map((o) => (
+        {/* Keep a value visible even if its option was later removed from the column. */}
+        {(value && !(col.options ?? []).includes(String(value)) ? [String(value), ...(col.options ?? [])] : col.options ?? []).map((o) => (
           <option key={o} value={o} className="bg-neutral-900">
             {o}
           </option>
@@ -173,6 +188,7 @@ function DataTable({
     onChange({ ...data, columns: columns.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
 
   const changeType = (col: Column, type: ColumnType) => {
+    if (type === col.type) return;
     // Cell values from the old type aren't meaningful for the new one, so reset them.
     onChange({
       columns: columns.map((c) =>
@@ -307,7 +323,7 @@ function DataTable({
                   {openCol === col.id && (
                     <div className="absolute left-0 top-full z-20 mt-1 w-56 space-y-2 rounded-md border border-neutral-700 bg-neutral-900 p-2 text-xs shadow-lg">
                       <label className="block text-neutral-400">
-                        Type
+                        Type <span className="text-neutral-500">(changing it clears this column&apos;s values)</span>
                         <select
                           className="mt-1 w-full rounded bg-neutral-800 px-1.5 py-1 text-neutral-200"
                           value={col.type}

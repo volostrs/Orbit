@@ -13,7 +13,9 @@ import {
   SuggestionMenuController,
   useCreateBlockNote,
 } from "@blocknote/react";
+import { useEffect } from "react";
 import { BarChart3, CalendarCheck, Table2 } from "lucide-react";
+import { moveCustomBlocksOnDrop } from "./blocks/moveBlockOnDrop";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { dataTableBlock, DEFAULT_TABLE_DATA } from "./blocks/DataTableBlock";
@@ -42,6 +44,13 @@ export default function BlockEditor({ initialContent, onChange }: BlockEditorPro
         ? (initialContent as PartialBlock[])
         : undefined,
   });
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    if (editor.prosemirrorView) cleanup = moveCustomBlocksOnDrop(editor);
+    else editor.onMount(() => (cleanup = moveCustomBlocksOnDrop(editor)));
+    return () => cleanup?.();
+  }, [editor]);
 
   return (
     <div className="w-full">

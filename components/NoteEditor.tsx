@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { updateNote, updateNoteIcon } from "@/lib/actions/notes";
 import type { Note, Notebook } from "@/lib/db/schema";
 import { IconPicker } from "./IconPicker";
@@ -25,7 +25,11 @@ export function NoteEditor({
   const [title, setTitle] = useState(note.title);
   const [isPending, startTransition] = useTransition();
 
+  // Latest editor content, so title edits don't re-save the content the note was opened with.
+  const latestContent = useRef<unknown>(note.content);
+
   const handleContentChange = (newContent: any[]) => {
+    latestContent.current = newContent;
     startTransition(async () => {
       await updateNote(
         note.id,
@@ -42,7 +46,7 @@ export function NoteEditor({
       await updateNote(
         note.id,
         newTitle,
-        note.content as unknown as Record<string, unknown>,
+        latestContent.current as Record<string, unknown>,
         note.notebookId
       );
     });

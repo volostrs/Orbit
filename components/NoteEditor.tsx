@@ -20,11 +20,14 @@ export function NoteEditor({
   note,
   notebooks,
   onEditorReady,
+  onContentEdited,
 }: {
   note: Note;
   notebooks: Notebook[];
   // Reports this note's live editor (with the note id it belongs to), and null when it unmounts.
   onEditorReady?: (noteId: string, editor: BlockNoteEditor<any, any, any> | null) => void;
+  // Reports every content change with the id of the note it belongs to (drives draft-assist's idle timer).
+  onContentEdited?: (noteId: string, content: any[]) => void;
 }) {
   const [title, setTitle] = useState(note.title);
   const [isPending, startTransition] = useTransition();
@@ -34,6 +37,7 @@ export function NoteEditor({
 
   const handleContentChange = (newContent: any[]) => {
     latestContent.current = newContent;
+    onContentEdited?.(note.id, newContent);
     startTransition(async () => {
       await updateNote(
         note.id,

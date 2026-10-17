@@ -30,6 +30,8 @@ interface AiSidebarProps {
   activeNoteId: string;
   // Returns the live editor for a note id, or null if that note is not the one open.
   getEditor: (noteId: string) => BlockNoteEditor<any, any, any> | null;
+  // A message to send on the user's behalf (e.g. from the draft-assist notification), once, for that note.
+  autoPrompt?: { id: string; noteId: string; text: string } | null;
 }
 
 export function AiSidebar({
@@ -37,7 +39,8 @@ export function AiSidebar({
   onCloseHref,
   activeNoteTitle,
   activeNoteId,
-  getEditor
+  getEditor,
+  autoPrompt
 }: AiSidebarProps) {
   const [width, setWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
@@ -49,6 +52,15 @@ export function AiSidebar({
   // and it can only be applied to that note's editor, so switching notes can never misdirect it.
   const [proposals, setProposals] = useState<Record<string, Proposal | undefined>>({});
   const proposal = proposals[activeNoteId];
+
+  // Send an auto prompt exactly once, only for the note it was made for, once the sidebar is open.
+  const sendRef = useRef<(text: string) => void>(() => {});
+  const handledPrompt = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !autoPrompt || autoPrompt.noteId !== activeNoteId || handledPrompt.current === autoPrompt.id) return;
+    handledPrompt.current = autoPrompt.id;
+    sendRef.current(autoPrompt.text);
+  }, [isOpen, autoPrompt, activeNoteId]);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -90,6 +102,8 @@ export function AiSidebar({
   }, [isResizing, resize, stopResizing]);
 
   if (!isOpen) return null;
+
+  sendRef.current = (text: string) => void handleSend(text);
 
   const handleSend = async (textToSend: string) => {
     if (!textToSend.trim() || loading) return;

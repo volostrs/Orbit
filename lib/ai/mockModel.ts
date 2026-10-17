@@ -9,7 +9,7 @@
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 
-const EDIT_VERB = /\b(add|insert|change|replace|rename|delete|remove|update|rewrite|fill|reorganize|reorganise)\b/i;
+const EDIT_VERB = /\b(add|insert|change|replace|rename|delete|remove|update|rewrite|fill|reorganize|reorganise|improv\w*|review)\b/i;
 const BEST_JUDGMENT = /best judg(?:e)?ment|use your judg(?:e)?ment|reasonable assumptions|you decide/i;
 const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
@@ -27,8 +27,25 @@ const textOf = (content: unknown): string =>
 
 const quoted = (s: string) => [...s.matchAll(/['"“‘]([^'"”’]+)['"”’]/g)].map((m) => m[1].trim());
 
+// Draft assessment (draft-assist notification): a fixed rule set standing in for the model's judgment so
+// the pipeline is deterministic. Suggests help for unfinished markers, a long wall of text, or a long
+// note with no headings. Real Gemini's judgment is NOT represented by this.
+function assess(system: string): Decision {
+  const body = system.split("--- CURRENT NOTE")[1]?.split("--- END OF NOTE ---")[0] ?? "";
+  const lines = [...body.matchAll(/^\{b\d+\} (.*)$/gm)].map((m) => m[1]);
+  const prose = lines.filter((l) => !/^(#|- |\d+\. |> |\[|\|)/.test(l));
+  const words = (l: string) => l.split(/\s+/).filter(Boolean).length;
+  const total = lines.reduce((n, l) => n + words(l), 0);
+  const verdict = (suggest: boolean, reason: string): Decision => ({ text: JSON.stringify({ suggest, reason: "[mock] " + reason }) });
+  if (/\b(TODO|TBD)\b|\?\?\?/.test(body)) return verdict(true, "Parts of this draft look unfinished.");
+  if (prose.some((l) => words(l) > 90)) return verdict(true, "One paragraph is very long and could be easier to read.");
+  if (total >= 80 && prose.length >= 4 && !lines.some((l) => l.startsWith("#"))) return verdict(true, "This note could use headings to organize it.");
+  return verdict(false, "This note already reads clearly.");
+}
+
 function decide(prompt: any[]): Decision {
   const system = textOf(prompt.find((m) => m.role === "system")?.content);
+  if (system.includes("DRAFT ASSESSMENT")) return assess(system);
   const hasNote = system.includes("CURRENT NOTE:");
   if (hasNote && !system.includes("Clarification first")) return { text: "[mock] ERROR: clarification guidance was not in the system prompt." };
 
@@ -53,6 +70,19 @@ function decide(prompt: any[]): Decision {
   const ask = (items: string[]): Decision => ({
     text: `[mock] Quick check before I change anything:\n${items.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
   });
+
+  // "Improve this note" (from the draft-assist notification): clarification-first. Ask what to focus on,
+  // then propose one small, safe change once the user has chosen.
+  if (/\b(improv\w*|review)\b/i.test(task) && !/\bheading\b/i.test(task)) {
+    const answers = turns.slice(start + 1).filter((t) => t.role === "user").map((t) => t.text).join(" ");
+    if (!judgment && !/clarity|organi[sz]ation|complete|everything|all of/i.test(answers)) {
+      return ask(["What would help most? Pick one: clarity (easier to read), organization (better structure), completeness (fill gaps), or all of them."]);
+    }
+    return {
+      text: "[mock] I've prepared a change: add a 'Summary' heading at the start.",
+      operations: [{ op: "insert", after: "start", blocks: [{ type: "heading", text: "Summary", level: 2 }] }],
+    };
+  }
 
   if (/\bheading\b/i.test(task) && /\badd\b/i.test(task)) {
     const title = q[0];

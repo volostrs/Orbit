@@ -100,7 +100,8 @@ export function AiSidebar({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           messages: updatedMessages,
-          noteContent: activeNoteContent 
+          // The server loads and translates this note itself; raw editor JSON is not sent.
+          noteId: activeNoteId,
         }),
       });
 

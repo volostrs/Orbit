@@ -1,4 +1,4 @@
-import { google } from "@ai-sdk/google";
+import { getChatModel, isMockAi } from "@/lib/ai/model";
 import { jsonSchema, streamText, tool } from "ai";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     }`;
 
     const result = streamText({
-      model: google("gemini-3.8-flash"),
+      model: await getChatModel(), // Gemini, unless ORBIT_AI_MOCK=1 (dev/test only)
       system: systemPrompt,
       messages: messages, // Pass the plain message objects directly
       // Only offered when a specific note is loaded; a proposal is always tied to that note.
@@ -123,7 +123,9 @@ export async function POST(req: Request) {
         }
       },
     });
-    return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    return new Response(stream, {
+      headers: { "Content-Type": "text/plain; charset=utf-8", "X-Orbit-AI": isMockAi() ? "mock" : "gemini" },
+    });
   } catch (error: any) {
     console.error("API Route Handler Error:", error);
     return new Response(

@@ -22,9 +22,13 @@ Blocks carry a ref like {b3}; it only identifies a block for edits, so never men
 The note is the only document you have been given. Do not assume access to other notes.`;
 
 // Rules for the propose_edit tool. Only the chat route adds these; they never change the saved note.
-export const EDIT_GUIDANCE = `Answering vs editing:
-- Questions, explanations, summaries and advice: just reply in text. Do NOT call propose_edit.
-- The user explicitly asks you to change, add, remove, reorganize or fill in the note: if something essential is missing or ambiguous, ask short clarifying questions first and do not call the tool yet. Once you have enough, call propose_edit once with the smallest set of operations, plus a one-sentence text summary.
+export const EDIT_GUIDANCE = `Clarification first (the user has ADHD: be clear, calm and brief):
+- Questions, explanations, summaries and advice: answer directly in text. Do NOT call propose_edit.
+- When asked to change, add, remove, reorganize or fill in the note, first judge whether the request is clear enough to do correctly. If it is vague, ambiguous, or missing something that would materially change the result, do NOT guess and do NOT call propose_edit: ask first. Use the note to understand what the user refers to, but never as a substitute for what they want.
+- Ask as few questions as possible, all together in ONE message, each specific and easy to answer. Offer 2-3 short options or an example when that helps. If several readings are reasonable, say in one line how they differ and let the user choose. No long explanations or jargon.
+- While waiting for an answer, change nothing and never treat silence as permission to assume. After the user answers, re-check; ask again only if something important is still unclear.
+- If the request is already clear, do not ask extra questions: call propose_edit once with the smallest set of operations, plus a one-sentence text summary.
+- If the user tells you to use your best judgment or make reasonable assumptions, do that for this task, but still ask if a missing detail makes a sensible result impossible.
 - Nothing is applied automatically: the user reviews and accepts or rejects your proposal.
 - Point at existing blocks with their {bN} ref. Change only what was asked; leave other blocks, including advanced blocks, alone. Never delete a block unless asked.
 - Advanced block data (data_json) uses these JSON shapes, mirroring how the blocks are shown above:

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
 import { ArrowDown, ArrowUp, Plus, Settings2, Trash2, X } from "lucide-react";
-import { frameStyle, StyleMenu } from "./blockStyle";
+import { BlockShell, frameStyle, StyleMenu } from "./blockStyle";
 
 export type ColumnType = "text" | "number" | "checkbox" | "date" | "select";
 type CellValue = string | number | boolean | null;
@@ -169,6 +169,22 @@ function DataTable({
   const [filter, setFilter] = useState<{ colId: string; value: string } | null>(null);
   const [openCol, setOpenCol] = useState<string | null>(null);
 
+  // Close the column menu on an outside click or Escape. Capture phase, because BlockShell stops
+  // mousedown from bubbling out of the block.
+  useEffect(() => {
+    if (!openCol) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(`[data-col-menu="${openCol}"]`)) setOpenCol(null);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpenCol(null);
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openCol]);
+
   const { columns, rows } = data;
   const sortCol = columns.find((c) => c.id === sort?.colId);
   const filterCol = columns.find((c) => c.id === filter?.colId);
@@ -279,7 +295,7 @@ function DataTable({
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col.id} className="relative min-w-36 border-b border-r border-neutral-800 text-left font-medium">
+                <th key={col.id} data-col-menu={col.id} className="relative min-w-36 border-b border-r border-neutral-800 text-left font-medium">
                   <div className="flex items-center">
                     <input
                       className={`${inputClass} font-medium`}
@@ -436,7 +452,7 @@ export const dataTableBlock = createReactBlockSpec(
     render: ({ block, editor }) => {
       const data = parseData(block.props.data);
       return (
-        <div className="w-full" contentEditable={false}>
+        <BlockShell>
           <DataTable
             data={data}
             color={block.props.color}
@@ -444,11 +460,19 @@ export const dataTableBlock = createReactBlockSpec(
           iconColor={block.props.iconColor}
             onStyleChange={(patch) => editor.updateBlock(block, { props: patch })}
             editable={editor.isEditable}
-            onChange={(next) =>
-              editor.updateBlock(block, { props: { data: JSON.stringify(next) } })
-            }
+            onChange={(next) => {
+              editor.updateBlock(block, { props: { data: JSON.stringify(next) } });
+              // If the cursor was on the table itself (e.g. it is the first block), the update leaves the
+              // whole block node-selected and outlined. Park the cursor in a neighbouring block instead.
+              try {
+                if ("node" in editor.prosemirrorState.selection) {
+                  const neighbour = editor.getNextBlock(block) ?? editor.getPrevBlock(block);
+                  if (neighbour) editor.setTextCursorPosition(neighbour, "start");
+                }
+              } catch {}
+            }}
           />
-        </div>
+        </BlockShell>
       );
     },
   }

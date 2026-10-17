@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
 import { ChevronLeft, ChevronRight, Plus, Settings2, Trash2 } from "lucide-react";
-import { ColorSwatches, frameStyle, StyleMenu, tint } from "./blockStyle";
+import { BlockShell, ColorSwatches, frameStyle, StyleMenu, tint } from "./blockStyle";
 
 type Mode = "days" | "target";
 
@@ -373,7 +373,7 @@ export const habitTrackerBlock = createReactBlockSpec(
   },
   {
     render: ({ block, editor }) => (
-      <div className="w-full" contentEditable={false}>
+      <BlockShell>
         <HabitTracker
           data={parseData(block.props.data)}
           editable={editor.isEditable}
@@ -383,7 +383,7 @@ export const habitTrackerBlock = createReactBlockSpec(
           onStyleChange={(patch) => editor.updateBlock(block, { props: patch })}
           onChange={(next) => editor.updateBlock(block, { props: { data: JSON.stringify(next) } })}
         />
-      </div>
+      </BlockShell>
     ),
   }
 );

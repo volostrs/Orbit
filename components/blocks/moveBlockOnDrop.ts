@@ -4,33 +4,60 @@ import type { BlockNoteEditor } from "@blocknote/core";
 const MOVABLE = new Set(["dataTable", "habitTracker", "chart"]);
 
 /**
- * Handles drops of a single custom block (data table, habit tracker, chart) as one atomic
- * BlockNote transaction: insert the copy at the destination, then remove the source. The default
- * ProseMirror drop deletes whatever is selected at drop time, which can leave both copies (or the
- * wrong content) behind. Both steps live in one `transact`, so one doc change, one onChange and
- * one autosave; if anything throws, nothing is dispatched and the original block stays.
+ * Moves a dragged custom block (data table, habit tracker, chart) as destination-copy followed by
+ * source-delete, inside ONE BlockNote transaction, so the move is a single document change, a single
+ * onChange/autosave and a single undo step.
  *
- * Returns a cleanup function. Drops of anything else fall through to the default handler.
+ *  1. At dragstart we record the dragged block's stable id (from the drag payload).
+ *  2. On drop we take over the event before ProseMirror/BlockNote can insert anything themselves.
+ *  3. In one `transact`: insert a copy (fresh id, same type and props) at the drop target, then remove
+ *     the source by its recorded id. If the insert fails or anything throws, nothing is dispatched and
+ *     the original stays where it was.
+ *  4. Any follow-up drop event from the same gesture is swallowed, so nothing else can add a copy.
+ *
+ * Drops of anything else fall through to the default handling. Returns a cleanup function.
  */
 export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
   const view = editor.prosemirrorView;
   if (!view) return () => {};
 
+  let sourceId: string | null = null;
+  let handledAt = 0;
+
+  const onDragStart = (event: DragEvent) => {
+    sourceId = null;
+    const html = event.dataTransfer?.getData("blocknote/html");
+    if (!html) return;
+    // Exactly one block in the payload, and it is a custom block we know how to move.
+    if ((html.match(/class="bn-block-outer"/g) ?? []).length !== 1) return;
+    const id = html.match(/data-id="([^"]+)"/)?.[1];
+    const type = html.match(/data-content-type="([^"]+)"/)?.[1];
+    if (id && type && MOVABLE.has(type)) sourceId = id;
+  };
+
   const onDrop = (event: DragEvent) => {
-    const slice = view.dragging?.slice;
-    if (!slice || slice.content.childCount !== 1) return;
+    // A second drop from the same gesture (synthetic re-dispatch, etc.) must not insert another copy.
+    if (!sourceId) {
+      if (Date.now() - handledAt < 500) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
 
-    const container = slice.content.firstChild!;
-    const type = container.firstChild?.type.name;
-    const sourceId = container.attrs.id as string | undefined;
-    // Only plain custom blocks; blocks with nested children use the default behaviour.
-    if (!type || !MOVABLE.has(type) || !sourceId || container.childCount > 1) return;
+    const id = sourceId;
+    sourceId = null;
+    handledAt = Date.now();
+    // We own this drop; nothing else may insert or delete for it.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    view.dragging = null;
 
-    const source = editor.getBlock(sourceId);
+    const source = editor.getBlock(id);
     const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
-    if (!source || source.children.length > 0 || !hit) return;
+    if (!source || source.children.length > 0 || !hit) return; // keep the original in place
 
-    // Find the block under the pointer; drop before/after it depending on the half hovered.
+    // Find the block under the pointer; drop before/after it depending on which half is hovered.
     const $pos = view.state.doc.resolve(hit.inside >= 0 ? hit.inside : hit.pos);
     let destId: string | undefined;
     let destRect: DOMRect | undefined;
@@ -43,13 +70,7 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
         break;
       }
     }
-
-    // We own this drop from here on, so ProseMirror must not also move/copy it.
-    event.preventDefault();
-    event.stopPropagation();
-    view.dragging = null;
-
-    if (!destId || destId === sourceId) return;
+    if (!destId || destId === id) return;
     const placement = destRect && event.clientY < destRect.top + destRect.height / 2 ? "before" : "after";
 
     try {
@@ -60,14 +81,25 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
           placement
         );
         if (!inserted) throw new Error("Insertion failed; source block kept.");
-        editor.removeBlocks([sourceId]);
+        editor.removeBlocks([id]);
       });
     } catch (err) {
       console.error("Block move failed; original block left in place.", err);
     }
   };
 
-  // Capture phase so we run before ProseMirror's own drop handler on the same element.
-  view.dom.addEventListener("drop", onDrop, true);
-  return () => view.dom.removeEventListener("drop", onDrop, true);
+  const onDragEnd = () => {
+    sourceId = null;
+  };
+
+  // dragstart: bubble phase, so BlockNote's side-menu handler has already filled the drag payload.
+  // drop: capture phase on the document, so we run before any editor-level drop handler.
+  document.addEventListener("dragstart", onDragStart);
+  document.addEventListener("drop", onDrop, true);
+  document.addEventListener("dragend", onDragEnd);
+  return () => {
+    document.removeEventListener("dragstart", onDragStart);
+    document.removeEventListener("drop", onDrop, true);
+    document.removeEventListener("dragend", onDragEnd);
+  };
 }

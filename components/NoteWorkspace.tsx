@@ -1,14 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef } from "react";
+import type { BlockNoteEditor } from "@blocknote/core";
 import { NoteEditor } from "@/components/NoteEditor";
 import { AiSidebar } from "@/components/AiSidebar";
 import { AiFloatingButton } from "@/components/AiFloatingButton";
-import { DiffReviewModal } from "@/components/DiffReviewModal";
 
 export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNote: any; notebooks: any[]; isAiOpen: boolean }) {
-  const [activeNoteContent, setActiveNoteContent] = useState(initialNote?.content || "");
-  const [proposedContent, setProposedContent] = useState<string | null>(null);
+  // The live editor of the open note, tagged with its note id. The AI sidebar uses it to apply an
+  // accepted proposal, and only ever gets it back for the note the proposal was made for.
+  const editorRef = useRef<{ noteId: string; editor: BlockNoteEditor<any, any, any> } | null>(null);
+
+  const handleEditorReady = useCallback((noteId: string, editor: BlockNoteEditor<any, any, any> | null) => {
+    if (editor) editorRef.current = { noteId, editor };
+    else if (editorRef.current?.noteId === noteId) editorRef.current = null;
+  }, []);
+
+  const getEditor = useCallback(
+    (noteId: string) => (editorRef.current?.noteId === noteId ? editorRef.current.editor : null),
+    []
+  );
 
   return (
     <>
@@ -16,8 +27,9 @@ export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNot
         {initialNote ? (
           <NoteEditor
             key={initialNote.id}
-            note={{ ...initialNote, content: activeNoteContent }}
+            note={initialNote}
             notebooks={notebooks}
+            onEditorReady={handleEditorReady}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-neutral-600 text-sm">
@@ -32,20 +44,8 @@ export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNot
         onCloseHref={`/?noteId=${initialNote?.id || ""}&aiOpen=`}
         activeNoteTitle={initialNote?.title}
         activeNoteId={initialNote?.id || ""}
-        activeNoteContent={activeNoteContent}
+        getEditor={getEditor}
       />
-
-      {proposedContent !== null && (
-        <DiffReviewModal
-          originalContent={activeNoteContent}
-          proposedContent={proposedContent}
-          onAccept={(newContent) => {
-            setActiveNoteContent(newContent);
-            setProposedContent(null);
-          }}
-          onReject={() => setProposedContent(null)}
-        />
-      )}
     </>
   );
 }

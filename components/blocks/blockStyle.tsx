@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Icons from "lucide-react";
 import { Palette } from "lucide-react";
 import { DynamicIcon } from "../DynamicIcon";
@@ -116,6 +116,27 @@ export function StyleMenu({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ProseMirror handles mousedown on non-editable block content before React sees it, and treats a
+// click on a button as selecting (and possibly dragging) the whole block. Controls inside a custom
+// block stop the native event so only the control reacts.
+export function BlockShell({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const stop = (e: MouseEvent) => {
+      if ((e.target as HTMLElement).closest("button, input, select, textarea, label, a")) e.stopPropagation();
+    };
+    el.addEventListener("mousedown", stop);
+    return () => el.removeEventListener("mousedown", stop);
+  }, []);
+  return (
+    <div ref={ref} className="w-full" contentEditable={false}>
+      {children}
     </div>
   );
 }

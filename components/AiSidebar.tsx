@@ -9,9 +9,14 @@ import {
   BarChart3, 
   CheckSquare, 
   ArrowUp,
-  Loader2
+  Loader2,
+  Check,
+  X
 } from "lucide-react";
 import Link from "next/link";
+import type { BlockNoteEditor } from "@blocknote/core";
+import { applyProposal } from "@/lib/ai/applyProposal";
+import { PROPOSAL_MARKER, type Proposal } from "@/lib/ai/proposal";
 
 interface Message {
   role: "user" | "assistant";
@@ -23,15 +28,16 @@ interface AiSidebarProps {
   onCloseHref: string;
   activeNoteTitle?: string;
   activeNoteId: string;
-  activeNoteContent?: string;
+  // Returns the live editor for a note id, or null if that note is not the one open.
+  getEditor: (noteId: string) => BlockNoteEditor<any, any, any> | null;
 }
 
-export function AiSidebar({ 
-  isOpen, 
-  onCloseHref, 
-  activeNoteTitle, 
-  activeNoteId, 
-  activeNoteContent 
+export function AiSidebar({
+  isOpen,
+  onCloseHref,
+  activeNoteTitle,
+  activeNoteId,
+  getEditor
 }: AiSidebarProps) {
   const [width, setWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
@@ -39,6 +45,10 @@ export function AiSidebar({
   const [loading, setLoading] = useState(false);
   
   const [chatSessions, setChatSessions] = useState<Record<string, Message[]>>({});
+  // Pending AI proposals by the note id they were made for. Only the open note's proposal is shown,
+  // and it can only be applied to that note's editor, so switching notes can never misdirect it.
+  const [proposals, setProposals] = useState<Record<string, Proposal | undefined>>({});
+  const proposal = proposals[activeNoteId];
   const sidebarRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -109,13 +119,16 @@ export function AiSidebar({
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let raw = "";
       let assistantContent = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        assistantContent += decoder.decode(value, { stream: true });
+        raw += decoder.decode(value, { stream: true });
+        // Anything after the marker is a machine-readable proposal, not chat text.
+        assistantContent = raw.split(PROPOSAL_MARKER)[0];
 
         setChatSessions((prev) => {
           const currentList = prev[activeNoteId] || [];
@@ -129,11 +142,42 @@ export function AiSidebar({
           };
         });
       }
+
+      // A proposal is only stored (never applied) and only if it was made for this note.
+      const markerAt = raw.indexOf(PROPOSAL_MARKER);
+      if (markerAt !== -1) {
+        try {
+          const p = JSON.parse(raw.slice(markerAt + PROPOSAL_MARKER.length)) as Proposal;
+          if (p && p.noteId === activeNoteId && Array.isArray(p.ops) && Array.isArray(p.preview)) {
+            setProposals((prev) => ({ ...prev, [activeNoteId]: p }));
+          }
+        } catch {
+          // Malformed proposal: ignore it; nothing is changed.
+        }
+      }
     } catch (error) {
       console.error("Stream reading error:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const addAssistantNote = (noteId: string, content: string) =>
+    setChatSessions((prev) => ({ ...prev, [noteId]: [...(prev[noteId] || []), { role: "assistant", content }] }));
+
+  const rejectProposal = () => {
+    setProposals((prev) => ({ ...prev, [activeNoteId]: undefined }));
+    addAssistantNote(activeNoteId, "Proposal rejected. Your note was not changed.");
+  };
+
+  const acceptProposal = () => {
+    if (!proposal) return;
+    const editor = getEditor(activeNoteId);
+    const result = editor
+      ? applyProposal(editor, proposal, activeNoteId)
+      : ({ ok: false, error: "The note editor isn't ready. Your note was not changed." } as const);
+    setProposals((prev) => ({ ...prev, [activeNoteId]: undefined }));
+    addAssistantNote(activeNoteId, result.ok ? "Changes applied to your note." : result.error);
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -249,6 +293,43 @@ export function AiSidebar({
           </div>
         )}
       </div>
+
+      {/* Proposed changes: shown for the open note only, nothing is applied until Accept */}
+      {proposal && (
+        <div data-testid="proposal-review" className="shrink-0 border-t border-amber-500/30 bg-neutral-950 px-3 pt-3 pb-2 flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Proposed changes — not applied yet</span>
+          </div>
+          <div className="max-h-56 overflow-y-auto flex flex-col gap-2 select-text">
+            {proposal.preview.map((item, i) => (
+              <div key={i} className="text-[11px] leading-relaxed">
+                <div className="text-neutral-400 mb-1">{item.label}</div>
+                {item.before && (
+                  <pre className="whitespace-pre-wrap font-sans bg-red-950/30 border border-red-900/40 text-red-200 line-through decoration-red-400/50 rounded-md px-2 py-1 mb-1 max-h-24 overflow-y-auto">{item.before}</pre>
+                )}
+                {item.after && (
+                  <pre className="whitespace-pre-wrap font-sans bg-emerald-950/30 border border-emerald-900/40 text-emerald-200 rounded-md px-2 py-1 max-h-24 overflow-y-auto">{item.after}</pre>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={acceptProposal}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+            >
+              <Check className="w-3.5 h-3.5" /> Accept Changes
+            </button>
+            <button
+              onClick={rejectProposal}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" /> Reject
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input Footer */}
       <div className="p-3 border-t border-neutral-800 bg-neutral-950 shrink-0">

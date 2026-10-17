@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { updateNote, updateNoteIcon } from "@/lib/actions/notes";
 import type { Note, Notebook } from "@/lib/db/schema";
+import type { BlockNoteEditor } from "@blocknote/core";
 import { IconPicker } from "./IconPicker";
 import dynamic from "next/dynamic";
 
@@ -18,9 +19,12 @@ const Editor = dynamic(() => import("./BlockEditor"), {
 export function NoteEditor({
   note,
   notebooks,
+  onEditorReady,
 }: {
   note: Note;
   notebooks: Notebook[];
+  // Reports this note's live editor (with the note id it belongs to), and null when it unmounts.
+  onEditorReady?: (noteId: string, editor: BlockNoteEditor<any, any, any> | null) => void;
 }) {
   const [title, setTitle] = useState(note.title);
   const [isPending, startTransition] = useTransition();
@@ -88,7 +92,11 @@ export function NoteEditor({
       />
 
       {/* Editor */}
-      <Editor initialContent={parsedContent} onChange={handleContentChange} />
+      <Editor
+        initialContent={parsedContent}
+        onChange={handleContentChange}
+        onEditorReady={(editor) => onEditorReady?.(note.id, editor)}
+      />
     </div>
   );
 }

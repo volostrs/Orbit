@@ -3,7 +3,7 @@
 import { createReactBlockSpec } from "@blocknote/react";
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
-import { frameStyle, PALETTE, StyleMenu } from "./blockStyle";
+import { BlockShell, frameStyle, PALETTE, StyleMenu } from "./blockStyle";
 
 type ChartType = "bar" | "line" | "pie";
 
@@ -378,7 +378,7 @@ export const chartBlock = createReactBlockSpec(
   },
   {
     render: ({ block, editor }) => (
-      <div className="w-full" contentEditable={false}>
+      <BlockShell>
         <Chart
           data={parseData(block.props.data)}
           editable={editor.isEditable}
@@ -388,7 +388,7 @@ export const chartBlock = createReactBlockSpec(
           onStyleChange={(patch) => editor.updateBlock(block, { props: patch })}
           onChange={(next) => editor.updateBlock(block, { props: { data: JSON.stringify(next) } })}
         />
-      </div>
+      </BlockShell>
     ),
   }
 );

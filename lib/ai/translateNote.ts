@@ -18,11 +18,23 @@ export const NOTE_GUIDANCE = `How to read the note below (a text translation of 
 - [HABIT TRACKER]: scheduling plus completion data. "scheduled days" are the weekdays a habit counts on; "weekly target" habits count any N days per week. Completed dates are YYYY-MM-DD. A completion on an unscheduled day does not count toward a days-mode habit.
 - [CHART]: a visualization backed by label/value rows. Preserve the chart type and values unless the user asks to change them.
 - [UNKNOWN BLOCK]: a block type you may not recognise; use what is shown and do not discard it.
+Blocks carry a ref like {b3}; it only identifies a block for edits, so never mention refs to the user.
 The note is the only document you have been given. Do not assume access to other notes.`;
 
-const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Rules for the propose_edit tool. Only the chat route adds these; they never change the saved note.
+export const EDIT_GUIDANCE = `Answering vs editing:
+- Questions, explanations, summaries and advice: just reply in text. Do NOT call propose_edit.
+- The user explicitly asks you to change, add, remove, reorganize or fill in the note: if something essential is missing or ambiguous, ask short clarifying questions first and do not call the tool yet. Once you have enough, call propose_edit once with the smallest set of operations, plus a one-sentence text summary.
+- Nothing is applied automatically: the user reviews and accepts or rejects your proposal.
+- Point at existing blocks with their {bN} ref. Change only what was asked; leave other blocks, including advanced blocks, alone. Never delete a block unless asked.
+- Advanced block data (data_json) uses these JSON shapes, mirroring how the blocks are shown above:
+  dataTable: {"columns":[{"name":"Task","type":"text|number|checkbox|date|select","options":["A","B"]}],"rows":[["cell for each column, in order"]]} (null for empty, true/false for checkbox, YYYY-MM-DD for date). When updating a table send ALL columns and rows, keeping existing column names unchanged.
+  habitTracker: {"habits":[{"name":"Study","mode":"days","days":["Mon","Wed"],"completed":["YYYY-MM-DD"]},{"name":"Run","mode":"target","target":3,"completed":[]}]}. Send all habits.
+  chart: {"title":"...","type":"bar|line|pie","rows":[{"label":"Mon","value":2}]}. Send all rows.`;
+
+export const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const HABIT_HISTORY_DAYS = 56; // completion dates older than this are summarised by count only
+export const HABIT_HISTORY_DAYS = 56; // completion dates older than this are summarised by count only
 const MAX_CONTEXT_CHARS = 60_000;
 
 const isObj = (v: unknown): v is Record<string, any> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -39,7 +51,7 @@ function parseJson(raw: unknown): any {
 const cell = (v: unknown) => String(v ?? "").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim();
 
 // Inline content (text runs, links, nested custom inline) -> plain text.
-function inlineText(content: unknown): string {
+export function inlineText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   return content
@@ -157,7 +169,7 @@ function describeBlock(b: AnyBlock, today: Date, num: { n: number }): string {
   }
 }
 
-function walk(blocks: unknown, today: Date, depth: number, out: string[]) {
+function walk(blocks: unknown, today: Date, depth: number, out: string[], refs: string[]) {
   if (!Array.isArray(blocks)) return;
   const num = { n: 0 };
   const indent = "  ".repeat(depth);
@@ -166,25 +178,47 @@ function walk(blocks: unknown, today: Date, depth: number, out: string[]) {
     const b = raw as AnyBlock;
     const line = describeBlock(b, today, num);
     // Skip empty spacer paragraphs but keep everything else, including blocks with no text.
-    if (!(b.type === "paragraph" && !line)) out.push(line.split("\n").map((l) => indent + l).join("\n"));
-    walk(b.children, today, depth + 1, out);
+    if (!(b.type === "paragraph" && !line)) {
+      // Each listed block gets a short ref ({b1}, {b2}, ...) so a proposed edit can point at it. Refs map
+      // to real block ids server-side; blocks without an id simply have no ref.
+      const ref = typeof b.id === "string" && b.id ? `{b${refs.push(b.id)}} ` : "";
+      out.push(line.split("\n").map((l, i) => indent + (i === 0 ? ref : "") + l).join("\n"));
+    }
+    walk(b.children, today, depth + 1, out, refs);
   }
 }
 
 /** Plain-text translation of a BlockNote document. Never throws; never mutates `content`. */
 export function translateBlocks(content: unknown, today: Date = new Date()): string {
+  return translateWithRefs(content, today).text;
+}
+
+/** Like translateBlocks, plus `refs`: refs[n - 1] is the block id behind the {bn} label in the text. */
+export function translateWithRefs(content: unknown, today: Date = new Date()): { text: string; refs: string[] } {
   const out: string[] = [];
+  const refs: string[] = [];
   try {
-    walk(content, today, 0, out);
+    walk(content, today, 0, out, refs);
   } catch {
     out.push("[Part of this note could not be translated.]");
   }
-  return out.length ? out.join("\n") : "(This note is empty.)";
+  return { text: out.length ? out.join("\n") : "(This note is empty.)", refs };
 }
 
 /** Full AI context for one note: guidance + title + translated body, capped for token safety. */
 export function buildNoteContext(note: { title?: string | null; content?: unknown }, today: Date = new Date()): string {
-  let body = translateBlocks(note.content, today);
-  if (body.length > MAX_CONTEXT_CHARS) body = body.slice(0, MAX_CONTEXT_CHARS) + "\n[Note truncated for length.]";
-  return `${NOTE_GUIDANCE}\n\n--- CURRENT NOTE: "${note.title || "Untitled"}" ---\n${body}\n--- END OF NOTE ---`;
+  return buildNoteContextWithRefs(note, today).context;
+}
+
+/** Same as buildNoteContext, plus the ref -> block id list needed to resolve a proposed edit. */
+export function buildNoteContextWithRefs(
+  note: { title?: string | null; content?: unknown },
+  today: Date = new Date()
+): { context: string; refs: string[] } {
+  const { text, refs } = translateWithRefs(note.content, today);
+  const body = text.length > MAX_CONTEXT_CHARS ? text.slice(0, MAX_CONTEXT_CHARS) + "\n[Note truncated for length.]" : text;
+  return {
+    context: `${NOTE_GUIDANCE}\n\n--- CURRENT NOTE: "${note.title || "Untitled"}" ---\n${body}\n--- END OF NOTE ---`,
+    refs,
+  };
 }

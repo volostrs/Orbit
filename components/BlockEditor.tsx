@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type BlockNoteEditor,
   BlockNoteSchema,
   defaultBlockSpecs,
   filterSuggestionItems,
@@ -34,9 +35,11 @@ const schema = BlockNoteSchema.create({
 interface BlockEditorProps {
   initialContent?: any[];
   onChange: (content: any[]) => void;
+  // Hands the live editor to the parent (and null on unmount), e.g. so AI proposals can be applied.
+  onEditorReady?: (editor: BlockNoteEditor<any, any, any> | null) => void;
 }
 
-export default function BlockEditor({ initialContent, onChange }: BlockEditorProps) {
+export default function BlockEditor({ initialContent, onChange, onEditorReady }: BlockEditorProps) {
   const editor = useCreateBlockNote({
     schema,
     initialContent:
@@ -50,6 +53,12 @@ export default function BlockEditor({ initialContent, onChange }: BlockEditorPro
     if (editor.prosemirrorView) cleanup = moveCustomBlocksOnDrop(editor);
     else editor.onMount(() => (cleanup = moveCustomBlocksOnDrop(editor)));
     return () => cleanup?.();
+  }, [editor]);
+
+  useEffect(() => {
+    onEditorReady?.(editor);
+    return () => onEditorReady?.(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
   return (

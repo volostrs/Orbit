@@ -57,7 +57,7 @@ export function DiffReviewModal({
           </button>
           <button
             onClick={() => onAccept(proposedContent)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-medium transition-colors shadow-lg"
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-[#fff] rounded-xl text-xs font-medium transition-colors shadow-lg"
           >
             <Check className="w-3.5 h-3.5" /> Keep / Apply
           </button>

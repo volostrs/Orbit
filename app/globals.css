@@ -1,8 +1,54 @@
 @import "tailwindcss";
 
+/* `dark:` follows the theme class set by next-themes, not the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --icon-white: #ffffff;
+  color-scheme: dark;
+}
+
+/*
+ * Light theme. Orbit's components are written against Tailwind's neutral scale (dark-first), so light
+ * mode re-maps that scale and the few accent shades used as text, instead of every component carrying
+ * its own light variants. The mapping is deliberate, not a mechanical inversion:
+ *   bg-neutral-950/900/800/700  -> page / raised surface / hover + border / strong border
+ *   text-neutral-100..500       -> strongest .. muted text (500 and darker stay >= 4.5:1 on white)
+ * `white` is the strongest foreground and `black` the page background in this theme.
+ */
+:root:not(.dark) {
   --background: #ffffff;
   --foreground: #171717;
+  --icon-white: #171717;
+  color-scheme: light;
+
+  --color-white: #0f0f10;
+  --color-black: #ffffff;
+
+  --color-neutral-50: #0a0a0a;
+  --color-neutral-100: #171717;
+  --color-neutral-200: #262626;
+  --color-neutral-300: #404040;
+  --color-neutral-400: #525252;
+  --color-neutral-500: #6b6b6b;
+  --color-neutral-600: #8c8c8c;
+  --color-neutral-700: #d4d4d4;
+  --color-neutral-800: #e8e8e8;
+  --color-neutral-900: #f5f5f5;
+  --color-neutral-950: #fbfbfb;
+
+  --color-red-200: #991b1b;
+  --color-red-300: #b91c1c;
+  --color-red-400: #dc2626;
+  --color-amber-400: #b45309;
+  --color-amber-500: #d97706;
+  --color-emerald-200: #065f46;
+  --color-emerald-400: #047857;
+  --color-purple-200: #6b21a8;
+  --color-purple-400: #7e22ce;
+  --color-blue-400: #1d4ed8;
 }
 
 @theme inline {
@@ -12,19 +58,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
-
 
 /* Thin custom scrollbar flush to the right */
 ::-webkit-scrollbar {
@@ -37,16 +75,16 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(128, 128, 128, 0.3);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(128, 128, 128, 0.55);
 }
 
-/* Force BlockNote to blend seamlessly with dark background */
-.bn-container[data-color-scheme="dark"] {
+/* Let BlockNote blend with the page in both themes */
+.bn-container[data-color-scheme] {
   background-color: transparent !important;
   --bn-colors-editor-background: transparent !important;
 }
@@ -54,4 +92,15 @@ body {
 .bn-editor {
   background-color: transparent !important;
   padding-inline: 0px !important;
+}
+
+/* Light mode: BlockNote's own menus should sit on the same surface colours as Orbit's. */
+.bn-container[data-color-scheme="light"] {
+  --bn-colors-editor-text: #171717;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
 }

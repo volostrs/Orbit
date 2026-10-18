@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BlockNoteEditor } from "@blocknote/core";
 import { NoteEditor } from "@/components/NoteEditor";
@@ -8,6 +8,7 @@ import { AiSidebar } from "@/components/AiSidebar";
 import { AiFloatingButton } from "@/components/AiFloatingButton";
 import { DraftAssistNotification } from "@/components/DraftAssistNotification";
 import { useDraftAssist } from "@/components/useDraftAssist";
+import { useNoteAppearance } from "@/components/useNoteAppearance";
 import { IMPROVE_PROMPT } from "@/lib/ai/draftAssist";
 
 export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNote: any; notebooks: any[]; isAiOpen: boolean }) {
@@ -37,9 +38,27 @@ export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNot
     if (!isAiOpen) router.push(`/?noteId=${initialNote.id}&aiOpen=true`);
   });
 
+  // Ctrl/Cmd + . toggles the AI sidebar from anywhere (including while typing in the editor).
+  const aiHref = `/?${initialNote ? `noteId=${initialNote.id}&` : ""}aiOpen=${!isAiOpen}`;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === ".") {
+        e.preventDefault();
+        router.push(aiHref);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [aiHref, router]);
+
+  const { appearance, update: updateAppearance } = useNoteAppearance(initialNote?.id);
+
   return (
     <>
-      <section className="flex-1 h-full overflow-y-auto bg-black relative">
+      <section
+        className="relative h-full min-w-0 flex-1 overflow-y-auto bg-black"
+        style={appearance.accent ? { backgroundImage: `linear-gradient(to bottom, ${appearance.accent}1f, transparent 280px)` } : undefined}
+      >
         {initialNote ? (
           <NoteEditor
             key={initialNote.id}
@@ -47,15 +66,20 @@ export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNot
             notebooks={notebooks}
             onEditorReady={handleEditorReady}
             onContentEdited={draft.onContentEdited}
+            appearance={appearance}
+            onAppearanceChange={updateAppearance}
           />
         ) : (
-          <div className="h-full flex items-center justify-center text-neutral-600 text-sm">
-            No note selected.
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="text-sm font-medium text-neutral-200">No note selected</p>
+            <p className="max-w-xs text-xs leading-5 text-neutral-500">
+              Pick a note from the sidebar, or create a new one to start writing.
+            </p>
           </div>
         )}
         {initialNote && draft.pending && (
           <DraftAssistNotification
-            key={initialNote.id}
+            key={`draft-assist-${initialNote.id}`}
             reason={draft.pending.reason}
             onAccept={draft.accept}
             onDecline={draft.decline}

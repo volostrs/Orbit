@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createNotebook, deleteNotebook } from "@/lib/actions/notebooks";
+import { Plus, X } from "lucide-react";
 
 export function NewNotebookDialog({ userId }: { userId: string }) {
   const [isCreating, setIsCreating] = useState(false);
@@ -23,36 +24,37 @@ export function NewNotebookDialog({ userId }: { userId: string }) {
     return (
       <button
         onClick={() => setIsCreating(true)}
-        className="text-xs text-neutral-500 hover:text-white transition-colors flex items-center gap-1 font-mono"
+        className="flex items-center gap-1 rounded px-1 py-0.5 text-xs text-neutral-500 transition-colors hover:text-neutral-100"
       >
-        + Folder
+        <Plus className="h-3 w-3" /> Folder
       </button>
     );
   }
 
   return (
-    <form onSubmit={handleCreate} className="flex gap-1 mt-1">
+    <form onSubmit={handleCreate} className="mt-1 flex items-center gap-1">
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Notebook name..."
+        placeholder="Notebook name"
         autoFocus
-        className="w-full px-2 py-1 bg-neutral-900 border border-neutral-700 text-xs text-white rounded focus:outline-none"
+        className="w-full min-w-0 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-neutral-500"
       />
       <button
         type="submit"
         disabled={isPending}
-        className="px-2 py-1 bg-neutral-200 text-black text-xs font-semibold rounded hover:bg-white"
+        className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-950 transition-colors hover:bg-white disabled:opacity-50"
       >
         Add
       </button>
       <button
         type="button"
         onClick={() => setIsCreating(false)}
-        className="px-2 py-1 text-neutral-500 hover:text-white text-xs"
+        aria-label="Cancel"
+        className="rounded p-1 text-neutral-500 hover:text-neutral-100"
       >
-        ✕
+        <X className="h-3.5 w-3.5" />
       </button>
     </form>
   );
@@ -73,10 +75,11 @@ export function DeleteNotebookButton({ notebookId }: { notebookId: string }) {
         }
       }}
       disabled={isPending}
-      className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-red-400 text-xs px-1"
-      title="Delete Notebook"
+      className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:text-red-400 focus-visible:opacity-100 group-hover:opacity-100"
+      title="Delete notebook"
+      aria-label="Delete notebook"
     >
-      ✕
+      <X className="h-3 w-3" />
     </button>
   );
 }

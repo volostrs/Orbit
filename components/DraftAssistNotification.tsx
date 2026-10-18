@@ -19,7 +19,7 @@ export function DraftAssistNotification({
       data-testid="draft-assist"
       role="region"
       aria-label="Note improvement suggestion"
-      className="absolute bottom-4 left-4 z-30 w-72 rounded-xl border border-neutral-800 bg-neutral-900/95 p-3 shadow-xl backdrop-blur text-xs text-neutral-200"
+      className="absolute bottom-4 left-4 z-30 w-72 max-w-[calc(100%-2rem)] rounded-xl border border-neutral-800 bg-neutral-900/95 p-3 shadow-xl backdrop-blur text-xs text-neutral-200"
     >
       <div className="flex items-start gap-2">
         <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
@@ -35,7 +35,7 @@ export function DraftAssistNotification({
       <div className="mt-2 flex gap-2">
         <button
           onClick={onAccept}
-          className="flex-1 rounded-lg bg-amber-500 px-2.5 py-1.5 font-medium text-black transition-colors hover:bg-amber-400"
+          className="flex-1 rounded-lg bg-[#f59e0b] px-2.5 py-1.5 font-medium text-[#1c1917] transition-colors hover:bg-[#fbbf24]"
         >
           Help improve this note
         </button>

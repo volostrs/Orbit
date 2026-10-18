@@ -184,7 +184,7 @@ function Pie({ rows }: { rows: ChartRow[] }) {
               data-slice
               d={`M${C},${C} L${x0},${y0} A${R},${R} 0 ${frac > 0.5 ? 1 : 0} 1 ${x1},${y1} Z`}
               fill={colorOf(i)}
-              stroke="#0a0a0a"
+              stroke="var(--background)"
               strokeWidth={1}
             >
               {title}

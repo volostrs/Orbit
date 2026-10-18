@@ -8,7 +8,10 @@ export const IDLE_MS = 5 * 60 * 1000; // quiet time after the last meaningful ed
 export const MIN_WORDS = 50; // shorter notes are not drafts worth assessing
 export const MIN_PROSE_BLOCKS = 3; // ...and need some actual structure (paragraphs, list items...)
 export const MEANINGFUL_WORD_DELTA = 20; // how much a note must change before it qualifies again
-export const IMPROVE_PROMPT = "Review this note and suggest improvements to its clarity, organization and completeness.";
+// Sent when the user clicks "Help improve this note". Clicking it is explicit permission to take initiative,
+// so this asks for a concrete proposal on the document itself, not a list of advice.
+export const IMPROVE_PROMPT =
+  "Please improve this note's clarity, organization and completeness. Use your best judgment for reasonable editorial changes, keeping my meaning and every fact as written. Call propose_edit with concrete changes to the note itself instead of only listing suggestions. Only ask a question if a missing fact makes a sensible edit impossible.";
 
 const PROSE_TYPES = new Set(["paragraph", "heading", "bulletListItem", "numberedListItem", "checkListItem", "quote", "toggleListItem"]);
 

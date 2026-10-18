@@ -82,7 +82,7 @@ export function InlineAiWidget({ selectedText, onKeep, onClose }: InlineAiWidget
           <div className="flex items-center justify-end gap-2 pt-1">
             <button
               onClick={() => onKeep(suggestion)}
-              className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-medium transition-colors"
+              className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-[#fff] rounded-md font-medium transition-colors"
             >
               <Check className="w-3.5 h-3.5" /> Keep
             </button>

@@ -15,6 +15,7 @@ import {
   useCreateBlockNote,
 } from "@blocknote/react";
 import { useEffect } from "react";
+import { useTheme } from "next-themes";
 import { BarChart3, CalendarCheck, Table2 } from "lucide-react";
 import { moveCustomBlocksOnDrop } from "./blocks/moveBlockOnDrop";
 import "@blocknote/core/fonts/inter.css";
@@ -40,6 +41,7 @@ interface BlockEditorProps {
 }
 
 export default function BlockEditor({ initialContent, onChange, onEditorReady }: BlockEditorProps) {
+  const { resolvedTheme } = useTheme();
   const editor = useCreateBlockNote({
     schema,
     initialContent:
@@ -65,7 +67,7 @@ export default function BlockEditor({ initialContent, onChange, onEditorReady }:
     <div className="w-full">
       <BlockNoteView
         editor={editor}
-        theme="dark"
+        theme={resolvedTheme === "light" ? "light" : "dark"}
         slashMenu={false}
         onChange={() => {
           onChange(editor.document);

@@ -8,8 +8,48 @@ import {
 import { NoteActionMenu } from "@/components/NoteActionMenu";
 import { DynamicIcon } from "@/components/DynamicIcon";
 import { AiSidebarToggle } from "@/components/AiSidebarToggle";
+import { NavShell } from "@/components/NavShell";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { NoteWorkspace } from "@/components/NoteWorkspace";
+import { Folder } from "lucide-react";
 import Link from "next/link";
+import type { Note, Notebook } from "@/lib/db/schema";
+
+const sectionLabel = "px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500";
+
+function NoteRow({
+  note,
+  notebooks,
+  isActive,
+  isAiOpen,
+}: {
+  note: Note;
+  notebooks: Notebook[];
+  isActive: boolean;
+  isAiOpen: boolean;
+}) {
+  return (
+    <div
+      className={`group flex items-center justify-between gap-1 rounded-md px-2 py-1.5 transition-colors ${
+        isActive ? "bg-neutral-800 text-neutral-100" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+      }`}
+    >
+      <Link
+        href={`/?noteId=${note.id}${isAiOpen ? "&aiOpen=true" : ""}`}
+        className="flex min-w-0 flex-1 items-center gap-2 text-xs"
+        aria-current={isActive ? "page" : undefined}
+      >
+        <DynamicIcon
+          name={note.icon || "FileText"}
+          color={note.iconColor || "#10b981"}
+          className="h-3.5 w-3.5 shrink-0"
+        />
+        <span className="truncate">{note.title || "Untitled"}</span>
+      </Link>
+      <NoteActionMenu note={note} notebooks={notebooks} isActive={isActive} />
+    </div>
+  );
+}
 
 export default async function Page({
   searchParams,
@@ -27,154 +67,65 @@ export default async function Page({
   const favoriteNotes = notes.filter((n) => n.isFavorite);
   const uncategorizedNotes = notes.filter((n) => !n.notebookId);
 
+  const row = (note: Note) => (
+    <NoteRow key={note.id} note={note} notebooks={notebooks} isActive={note.id === activeNote?.id} isAiOpen={isAiOpen} />
+  );
+
   return (
-    <main className="flex h-screen w-screen bg-black text-white font-sans antialiased overflow-hidden">
+    <main className="flex h-dvh w-screen overflow-hidden bg-black font-sans text-neutral-100 antialiased">
       {/* Navigation Sidebar */}
-      <aside className="w-64 border-r border-neutral-800 p-4 flex flex-col justify-between shrink-0 h-full bg-black">
-        <div className="flex flex-col gap-4 overflow-y-auto flex-1 pr-1">
+      <NavShell>
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
           <div className="flex items-center justify-between">
-            <h1 className="text-xs font-semibold tracking-widest text-neutral-400 uppercase">
-              Orbit
-            </h1>
+            <h1 className="text-xs font-semibold uppercase tracking-widest text-neutral-400">Orbit</h1>
             <NewNotebookDialog userId={testUserId} />
           </div>
 
           <NewNoteButton userId={testUserId} />
 
-          <div className="flex flex-col gap-4 mt-2">
-            {/* Favorites Section */}
+          <nav className="mt-1 flex flex-col gap-4" aria-label="Notes">
+            {notes.length === 0 && notebooks.length === 0 && (
+              <p className="px-1 text-xs leading-5 text-neutral-500">
+                No notes yet. Create one to get started.
+              </p>
+            )}
+
             {favoriteNotes.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider px-1">
-                  Favorites
-                </span>
-                {favoriteNotes.map((note) => {
-                  const isActive = note.id === activeNote?.id;
-                  return (
-                    <div
-                      key={note.id}
-                      className={`group flex items-center justify-between px-2 py-1.5 rounded transition-colors ${
-                        isActive
-                          ? "bg-neutral-800 text-white"
-                          : "text-neutral-400 hover:bg-neutral-900"
-                      }`}
-                    >
-                      <Link
-                        href={`/?noteId=${note.id}${isAiOpen ? "&aiOpen=true" : ""}`}
-                        className="truncate text-xs flex-1 flex items-center gap-2"
-                      >
-                        <DynamicIcon
-                          name={note.icon || "FileText"}
-                          color={note.iconColor || "#10b981"}
-                          className="w-3.5 h-3.5 shrink-0"
-                        />
-                        <span className="truncate">{note.title || "Untitled"}</span>
-                      </Link>
-                      <NoteActionMenu
-                        note={note}
-                        notebooks={notebooks}
-                        isActive={isActive}
-                      />
-                    </div>
-                  );
-                })}
+              <div className="flex flex-col gap-0.5">
+                <span className={`${sectionLabel} mb-1`}>Favorites</span>
+                {favoriteNotes.map(row)}
               </div>
             )}
 
-            {/* Notebook Folders */}
-            {notebooks.map((notebook) => {
-              const folderNotes = notes.filter((n) => n.notebookId === notebook.id);
-              return (
-                <div key={notebook.id} className="flex flex-col gap-1">
-                  <div className="group flex items-center justify-between text-xs font-semibold text-neutral-400 px-1 py-1">
-                    <span className="truncate">📁 {notebook.title}</span>
-                    <DeleteNotebookButton notebookId={notebook.id} />
-                  </div>
-                  <div className="pl-2 border-l border-neutral-800 flex flex-col gap-1">
-                    {folderNotes.map((note) => {
-                      const isActive = note.id === activeNote?.id;
-                      return (
-                        <div
-                          key={note.id}
-                          className={`group flex items-center justify-between px-2 py-1 rounded transition-colors ${
-                            isActive
-                              ? "bg-neutral-800 text-white"
-                              : "text-neutral-400 hover:bg-neutral-900"
-                          }`}
-                        >
-                          <Link
-                            href={`/?noteId=${note.id}${isAiOpen ? "&aiOpen=true" : ""}`}
-                            className="truncate text-xs flex-1 flex items-center gap-2"
-                          >
-                            <DynamicIcon
-                              name={note.icon || "FileText"}
-                              color={note.iconColor || "#10b981"}
-                              className="w-3.5 h-3.5 shrink-0"
-                            />
-                            <span className="truncate">{note.title || "Untitled"}</span>
-                          </Link>
-                          <NoteActionMenu
-                            note={note}
-                            notebooks={notebooks}
-                            isActive={isActive}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
+            {notebooks.map((notebook) => (
+              <div key={notebook.id} className="flex flex-col gap-0.5">
+                <div className="group mb-1 flex items-center justify-between gap-2 px-1 text-neutral-400">
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
+                    <Folder className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{notebook.title}</span>
+                  </span>
+                  <DeleteNotebookButton notebookId={notebook.id} />
                 </div>
-              );
-            })}
+                <div className="flex flex-col gap-0.5 border-l border-neutral-800 pl-2">
+                  {notes.filter((n) => n.notebookId === notebook.id).map(row)}
+                </div>
+              </div>
+            ))}
 
-            {/* Uncategorized Notes */}
             {uncategorizedNotes.length > 0 && (
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider px-1">
-                  Notes
-                </span>
-                {uncategorizedNotes.map((note) => {
-                  const isActive = note.id === activeNote?.id;
-                  return (
-                    <div
-                      key={note.id}
-                      className={`group flex items-center justify-between px-2 py-1.5 rounded transition-colors ${
-                        isActive
-                          ? "bg-neutral-800 text-white"
-                          : "text-neutral-400 hover:bg-neutral-900"
-                      }`}
-                    >
-                      <Link
-                        href={`/?noteId=${note.id}${isAiOpen ? "&aiOpen=true" : ""}`}
-                        className="truncate text-xs flex-1 flex items-center gap-2"
-                      >
-                        <DynamicIcon
-                          name={note.icon || "FileText"}
-                          color={note.iconColor || "#10b981"}
-                          className="w-3.5 h-3.5 shrink-0"
-                        />
-                        <span className="truncate">{note.title || "Untitled"}</span>
-                      </Link>
-                      <NoteActionMenu
-                        note={note}
-                        notebooks={notebooks}
-                        isActive={isActive}
-                      />
-                    </div>
-                  );
-                })}
+              <div className="flex flex-col gap-0.5">
+                <span className={`${sectionLabel} mb-1`}>Notes</span>
+                {uncategorizedNotes.map(row)}
               </div>
             )}
-          </div>
+          </nav>
         </div>
 
-        {/* Orbit AI Toggle Button at Bottom Left */}
-        <div className="pt-3 border-t border-neutral-800">
-          <AiSidebarToggle
-            isAiOpen={isAiOpen}
-            activeNoteId={activeNote?.id}
-          />
+        <div className="flex flex-col gap-2 border-t border-neutral-800 pt-3">
+          <AiSidebarToggle isAiOpen={isAiOpen} activeNoteId={activeNote?.id} />
+          <ThemeSwitch />
         </div>
-      </aside>
+      </NavShell>
 
       {/* Workspace Client Wrapper (Editor + AI Sidebar with change review) */}
       <NoteWorkspace

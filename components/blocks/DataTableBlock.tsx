@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
 import { ArrowDown, ArrowUp, Plus, Settings2, Trash2, X } from "lucide-react";
 import { BlockShell, frameStyle, StyleMenu } from "./blockStyle";
+import { FloatingPopover } from "../ui/floating-popover";
 
 export type ColumnType = "text" | "number" | "checkbox" | "date" | "select";
 type CellValue = string | number | boolean | null;
@@ -169,22 +170,6 @@ function DataTable({
   const [filter, setFilter] = useState<{ colId: string; value: string } | null>(null);
   const [openCol, setOpenCol] = useState<string | null>(null);
 
-  // Close the column menu on an outside click or Escape. Capture phase, because BlockShell stops
-  // mousedown from bubbling out of the block.
-  useEffect(() => {
-    if (!openCol) return;
-    const onDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest(`[data-col-menu="${openCol}"]`)) setOpenCol(null);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpenCol(null);
-    document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown, true);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [openCol]);
-
   const { columns, rows } = data;
   const sortCol = columns.find((c) => c.id === sort?.colId);
   const filterCol = columns.find((c) => c.id === filter?.colId);
@@ -249,7 +234,7 @@ function DataTable({
       className="my-2 w-full rounded-lg border border-neutral-800 bg-neutral-900/40 text-neutral-200"
       style={frameStyle(color)}
     >
-      <div className="flex items-center gap-2 border-b border-neutral-800 px-2 py-1.5 text-xs text-neutral-400">
+      <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-2 py-1.5 text-xs text-neutral-400">
         <StyleMenu color={color} icon={icon} iconColor={iconColor} editable={editable} onChange={onStyleChange} />
         <span>Filter</span>
         <select
@@ -295,7 +280,7 @@ function DataTable({
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col.id} data-col-menu={col.id} className="relative min-w-36 border-b border-r border-neutral-800 text-left font-medium">
+                <th key={col.id} className="min-w-36 border-b border-r border-neutral-800 text-left font-medium">
                   <div className="flex items-center">
                     <input
                       className={`${inputClass} font-medium`}
@@ -327,18 +312,16 @@ function DataTable({
                       )}
                     </button>
                     {editable && (
-                      <button
-                        className="px-1 text-neutral-500 hover:text-neutral-200"
-                        onClick={() => setOpenCol(openCol === col.id ? null : col.id)}
-                        aria-label={`Configure ${col.name}`}
+                      <FloatingPopover
+                        open={openCol === col.id}
+                        onOpenChange={(o) => setOpenCol(o ? col.id : null)}
+                        triggerLabel={`Configure ${col.name}`}
+                        triggerClassName="px-1 text-neutral-500 hover:text-neutral-200"
+                        trigger={<Settings2 className="h-3.5 w-3.5" />}
+                        className="w-56 space-y-2 p-2.5"
+                        align="end"
                       >
-                        <Settings2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  {openCol === col.id && (
-                    <div className="absolute left-0 top-full z-20 mt-1 w-56 space-y-2 rounded-md border border-neutral-700 bg-neutral-900 p-2 text-xs shadow-lg">
-                      <label className="block text-neutral-400">
+                        <label className="block text-neutral-400">
                         Type <span className="text-neutral-500">(changing it clears this column&apos;s values)</span>
                         <select
                           className="mt-1 w-full rounded bg-neutral-800 px-1.5 py-1 text-neutral-200"
@@ -376,8 +359,9 @@ function DataTable({
                       >
                         <Trash2 className="h-3.5 w-3.5" /> Delete column
                       </button>
-                    </div>
-                  )}
+                      </FloatingPopover>
+                    )}
+                  </div>
                 </th>
               ))}
               {editable && (

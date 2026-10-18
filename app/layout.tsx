@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   description: "A Notion-style workspace for notes and notebooks.",
 };
 
+// Keeps the software keyboard from covering the AI composer / editor on mobile (the page resizes instead).
+export const viewport: Viewport = { interactiveWidget: "resizes-content" };
+
 export default function RootLayout({
   children,
 }: {
@@ -32,7 +35,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-neutral-950 text-white">
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
         >

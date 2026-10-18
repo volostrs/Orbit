@@ -29,7 +29,8 @@ export function DynamicIcon({
   return (
     <Icon
       className={className}
-      style={{ color: color || "currentColor" }}
+      // A white icon would vanish on a light page, so "white" follows the theme's strongest foreground.
+      style={{ color: color?.toLowerCase() === "#ffffff" ? "var(--icon-white)" : color || "currentColor" }}
       size={size}
       {...props}
     />

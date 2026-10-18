@@ -5,6 +5,7 @@ import * as Icons from "lucide-react";
 import { Palette } from "lucide-react";
 import { DynamicIcon } from "../DynamicIcon";
 import { IconPicker } from "../IconPicker";
+import { FloatingPopover } from "../ui/floating-popover";
 
 // Small built-in palette. Colors are applied as low-alpha tints so text stays readable on any theme.
 export const PALETTE = [
@@ -100,22 +101,17 @@ export function StyleMenu({
         onSelectIcon={(name, c) => onChange({ icon: name, iconColor: c })}
         onRemoveIcon={() => onChange({ icon: "", iconColor: "" })}
       />
-      <div className="relative">
-        <button
-          type="button"
-          aria-label="Block color"
-          onClick={() => setColorOpen(!colorOpen)}
-          className="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-        >
-          <Palette className="h-3.5 w-3.5" />
-        </button>
-        {colorOpen && (
-          <div className="absolute left-0 top-full z-30 mt-1 w-56 space-y-2 rounded-md border border-neutral-700 bg-neutral-900 p-2 text-xs shadow-lg">
-            <div className="text-neutral-400">Block color</div>
-            <ColorSwatches value={color} onChange={(hex) => onChange({ color: hex })} label="Color" />
-          </div>
-        )}
-      </div>
+      <FloatingPopover
+        open={colorOpen}
+        onOpenChange={setColorOpen}
+        triggerLabel="Block color"
+        triggerClassName="flex h-6 w-6 items-center justify-center rounded text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+        trigger={<Palette className="h-3.5 w-3.5" />}
+        className="w-56 space-y-2 p-2.5"
+      >
+        <div className="text-neutral-400">Block color</div>
+        <ColorSwatches value={color} onChange={(hex) => onChange({ color: hex })} label="Color" />
+      </FloatingPopover>
     </div>
   );
 }

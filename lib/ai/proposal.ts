@@ -42,6 +42,7 @@ export const TEXT_TYPES = new Set([
   "quote",
 ]);
 export const ADVANCED_TYPES = new Set(["dataTable", "habitTracker", "chart"]);
+const ADVANCED_NAMES: Record<string, string> = { dataTable: "data table", habitTracker: "habit tracker", chart: "chart" };
 
 const COLUMN_TYPES = ["text", "number", "checkbox", "date", "select"];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -70,12 +71,13 @@ const textContent = (text: string): ProposalContent => (text ? [{ type: "text", 
 
 function parseData(raw: unknown, what: string): any {
   if (typeof raw !== "string" || !raw) return fail(`${what} needs data_json`);
+  let v: unknown;
   try {
-    const v = JSON.parse(raw);
-    return isObj(v) ? v : fail(`${what} data_json must be a JSON object`);
+    v = JSON.parse(raw);
   } catch {
     return fail(`${what} data_json is not valid JSON`);
   }
+  return isObj(v) ? v : fail(`${what} data_json must be a JSON object`);
 }
 
 const existingData = (block: any) => {
@@ -248,7 +250,6 @@ export function buildProposal(noteId: string, noteContent: unknown, refs: string
   };
 
   const touched = new Set<string>();
-  const removed = new Set<string>();
   const ops: ProposalOp[] = [];
   const preview: ProposalPreviewItem[] = [];
 
@@ -291,6 +292,15 @@ export function buildProposal(noteId: string, noteContent: unknown, refs: string
         preview.push({ label: `Update ${block.type === "dataTable" ? "data table" : block.type === "habitTracker" ? "habit tracker" : "chart"}`, before: plain(block), after: plain({ ...block, props: { ...block.props, data } }) });
       } else if (TEXT_TYPES.has(block.type)) {
         const type = raw.type ?? block.type;
+        if (ADVANCED_TYPES.has(type)) {
+          // Converting text into an advanced block: a custom block can't be morphed from a text block in
+          // place, so this is a replacement (insert the new block after it, delete the source) that is
+          // applied atomically. The new block gets a fresh id from the editor, never one from the model.
+          const created: ProposalBlock = { type, props: { data: convertData(type, raw.data_json, undefined, today) } };
+          ops.push({ kind: "insert", at: block.id, blocks: [created] }, { kind: "delete", id: block.id, expect });
+          preview.push({ label: `Replace text with ${ADVANCED_NAMES[type]}`, before: expect || "(empty)", after: translateBlocks([created]) });
+          continue;
+        }
         if (!TEXT_TYPES.has(type)) fail(`unsupported block type "${type}"`);
         const op: ProposalOp = { kind: "update", id: block.id, expect };
         if (raw.text !== undefined) op.content = textContent(str(raw.text, "block text", MAX_TEXT, false));
@@ -309,7 +319,6 @@ export function buildProposal(noteId: string, noteContent: unknown, refs: string
       const block = resolve(raw.ref);
       if (touched.has(block.id)) fail("a block can only be changed once per proposal");
       touched.add(block.id);
-      removed.add(block.id);
       ops.push({ kind: "delete", id: block.id, expect: blockText(block) });
       preview.push({ label: "Delete block", before: plain(block) });
     } else {
@@ -317,7 +326,7 @@ export function buildProposal(noteId: string, noteContent: unknown, refs: string
     }
   }
 
-  for (const op of ops) if (op.kind === "insert" && removed.has(op.at)) fail("cannot insert after a block that is being deleted");
+  // An insert may be anchored on a block that is also deleted ("replace"): applyProposal runs inserts first.
   return { id: uid(), noteId, ops, preview };
 }
 

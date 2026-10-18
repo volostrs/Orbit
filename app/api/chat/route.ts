@@ -27,7 +27,7 @@ const proposeEdit = tool({
             ref: { type: "string", description: "update/delete: the block's ref, e.g. b3" },
             after: { type: "string", description: 'insert: a block ref, or "start" / "end"' },
             text: { type: "string", description: "update: new text for a text block" },
-            type: { type: "string", enum: BLOCK_TYPES, description: "update: optionally change a text block's type" },
+            type: { type: "string", enum: BLOCK_TYPES, description: "update: optionally change a text block's type. A dataTable/habitTracker/chart here (with data_json) replaces that text block with the new advanced block." },
             level: { type: "integer", description: "heading level 1-3" },
             checked: { type: "boolean" },
             data_json: { type: "string", description: "update of a dataTable/habitTracker/chart: the full new data as a JSON string" },

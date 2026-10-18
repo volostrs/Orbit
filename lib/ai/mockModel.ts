@@ -9,7 +9,7 @@
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 
-const EDIT_VERB = /\b(add|insert|change|replace|rename|delete|remove|update|rewrite|fill|reorganize|reorganise|improv\w*|review)\b/i;
+const EDIT_VERB = /\b(convert|add|insert|change|replace|rename|delete|remove|update|rewrite|fill|reorganize|reorganise|improv\w*|review)\b/i;
 const BEST_JUDGMENT = /best judg(?:e)?ment|use your judg(?:e)?ment|reasonable assumptions|you decide/i;
 const usage = {
   inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
@@ -71,6 +71,16 @@ function decide(prompt: any[]): Decision {
     text: `[mock] Quick check before I change anything:\n${items.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
   });
 
+  // "Convert 'some line' into a habit tracker": the update-with-advanced-type shape that live Gemini produced.
+  if (/\bconvert\b/i.test(task) && q.length) {
+    const hit = find(q[0]);
+    if (!hit) return ask([`I can't find '${q[0]}' in this note. Which line did you mean?`]);
+    return {
+      text: `[mock] I've prepared a change: convert "${q[0]}" into a habit tracker.`,
+      operations: [{ op: "update", ref: hit.ref, type: "habitTracker", data_json: JSON.stringify({ habits: [{ name: "Study", mode: "days", days: ["Mon", "Wed"], completed: [] }] }) }],
+    };
+  }
+
   // "Improve this note" (from the draft-assist notification): clarification-first. Ask what to focus on,
   // then propose one small, safe change once the user has chosen.
   if (/\b(improv\w*|review)\b/i.test(task) && !/\bheading\b/i.test(task)) {
@@ -121,10 +131,17 @@ export function createMockModel() {
   return new MockLanguageModelV4({
     doStream: async (options: any) => {
       const d = decide(options.prompt);
-      const chunks: any[] = [{ type: "text-start", id: "t1" }, { type: "text-delta", id: "t1", delta: d.text }, { type: "text-end", id: "t1" }];
+      // ORBIT_AI_MOCK_DELAY_MS (dev only) slows the mock and streams it in small pieces so loading states can be seen.
+      const delay = Number(process.env.ORBIT_AI_MOCK_DELAY_MS) || 0;
+      const pieces = delay ? d.text.match(/\S+\s*/g) ?? [d.text] : [d.text];
+      const chunks: any[] = [
+        { type: "text-start", id: "t1" },
+        ...pieces.map((delta) => ({ type: "text-delta", id: "t1", delta })),
+        { type: "text-end", id: "t1" },
+      ];
       if (d.operations) chunks.push({ type: "tool-call", toolCallId: "mock-call", toolName: "propose_edit", input: JSON.stringify({ operations: d.operations }) });
       chunks.push({ type: "finish", finishReason: { unified: d.operations ? "tool-calls" : "stop", raw: undefined }, logprobs: undefined, usage });
-      return { stream: simulateReadableStream({ chunks, initialDelayInMs: 0, chunkDelayInMs: 0 }) };
+      return { stream: simulateReadableStream({ chunks, initialDelayInMs: delay, chunkDelayInMs: delay / 4 }) };
     },
   });
 }

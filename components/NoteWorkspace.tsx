@@ -11,7 +11,28 @@ import { useDraftAssist } from "@/components/useDraftAssist";
 import { useNoteAppearance } from "@/components/useNoteAppearance";
 import { IMPROVE_PROMPT } from "@/lib/ai/draftAssist";
 
-export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNote: any; notebooks: any[]; isAiOpen: boolean }) {
+// `hidden` (Dashboard/Calendar showing) only hides the workspace with CSS: the editor, its unsaved state, the AI
+// conversation and the notification stay mounted, so coming back never reinitialises anything.
+export function NoteWorkspace({
+  initialNote,
+  notebooks,
+  isAiOpen,
+  hidden = false,
+  chats = [],
+  activeChatId = null,
+  initialMessages = [],
+  maxChats = 3,
+}: {
+  initialNote: any;
+  notebooks: any[];
+  isAiOpen: boolean;
+  hidden?: boolean;
+  // Saved AI chats of this note, which one is selected (null = unsaved draft) and its saved messages.
+  chats?: { id: string; title: string }[];
+  activeChatId?: string | null;
+  initialMessages?: { id: string; role: "user" | "assistant"; content: string; kind?: "notice" | "proposal" }[];
+  maxChats?: number;
+}) {
   const router = useRouter();
 
   // The live editor of the open note, tagged with its note id. The AI sidebar uses it to apply an
@@ -35,7 +56,8 @@ export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNot
   const draft = useDraftAssist(initialNote?.id, initialNote?.content, () => {
     if (!initialNote) return;
     setAutoPrompt({ id: crypto.randomUUID(), noteId: initialNote.id, text: IMPROVE_PROMPT });
-    if (!isAiOpen) router.push(`/?noteId=${initialNote.id}&aiOpen=true`);
+    // The improvement request gets its own new chat when the note has room for one.
+    router.push(`/?noteId=${initialNote.id}&aiOpen=true${chats.length < maxChats ? "&chatId=new" : ""}`);
   });
 
   // Ctrl/Cmd + . toggles the AI sidebar from anywhere (including while typing in the editor).
@@ -54,7 +76,7 @@ export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNot
   const { appearance, update: updateAppearance } = useNoteAppearance(initialNote?.id);
 
   return (
-    <>
+    <div className={hidden ? "hidden" : "contents"} aria-hidden={hidden || undefined}>
       <section
         className="relative h-full min-w-0 flex-1 overflow-y-auto bg-black"
         style={appearance.accent ? { backgroundImage: `linear-gradient(to bottom, ${appearance.accent}1f, transparent 280px)` } : undefined}
@@ -95,7 +117,11 @@ export function NoteWorkspace({ initialNote, notebooks, isAiOpen }: { initialNot
         activeNoteId={initialNote?.id || ""}
         getEditor={getEditor}
         autoPrompt={autoPrompt}
+        chats={chats}
+        activeChatId={activeChatId}
+        initialMessages={initialMessages}
+        maxChats={maxChats}
       />
-    </>
+    </div>
   );
 }

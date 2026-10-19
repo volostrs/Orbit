@@ -1,9 +1,13 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
+  check,
   jsonb,
   pgTable,
+  smallint,
   text,
+  unique,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -44,6 +48,36 @@ export const notes = pgTable("notes", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Saved AI chats, each permanently tied to one note. `slot` (1..3, unique per note) is what enforces the
+// three-chats-per-note limit in the database itself: a fourth insert has no free slot and cannot succeed,
+// even when requests race. Messages hold plain text only; proposals are never stored (see lib/ai/conversations.ts).
+export const aiConversations = pgTable(
+  "ai_conversations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    noteId: uuid("note_id")
+      .notNull()
+      .references(() => notes.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    slot: smallint("slot").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [unique("ai_conversations_note_slot_unique").on(t.noteId, t.slot), check("ai_conversations_slot_range", sql`${t.slot} between 1 and 3`)]
+);
+
+export const aiMessages = pgTable("ai_messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => aiConversations.id, { onDelete: "cascade" }),
+  seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity().notNull(),
+  role: text("role").notNull(), // "user" | "assistant"
+  kind: text("kind"), // null (ordinary answer / clarifying question) | "proposal" | "notice"
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const notebookRelations = relations(notebooks, ({ many, one }) => ({
   notes: many(notes),
   user: one(users, {
@@ -67,3 +101,5 @@ export const noteRelations = relations(notes, ({ one }) => ({
 export type User = typeof users.$inferSelect;
 export type Notebook = typeof notebooks.$inferSelect;
 export type Note = typeof notes.$inferSelect;
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type AiMessage = typeof aiMessages.$inferSelect;

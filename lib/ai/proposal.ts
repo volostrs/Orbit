@@ -27,6 +27,8 @@ export interface ProposalPreviewItem {
 export interface Proposal {
   id: string;
   noteId: string;
+  // The chat this proposal came from; a proposal is only ever shown in, and applied from, that conversation.
+  conversationId?: string;
   ops: ProposalOp[];
   preview: ProposalPreviewItem[];
 }

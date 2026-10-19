@@ -8,7 +8,8 @@ import {
   deleteNote,
   updateNote,
 } from "@/lib/actions/notes";
-import type { Note, Notebook } from "@/lib/db/schema";
+import type { Notebook } from "@/lib/db/schema";
+import type { NoteSummary } from "@/components/SidebarNav";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Folder, MoreHorizontal, Copy, Pencil, Star, Trash2 } from "lucide-react";
 import { FloatingPopover } from "@/components/ui/floating-popover";
@@ -18,7 +19,7 @@ export function NoteActionMenu({
   notebooks,
   isActive,
 }: {
-  note: Note;
+  note: NoteSummary;
   notebooks: Notebook[];
   isActive: boolean;
 }) {
@@ -62,7 +63,7 @@ export function NoteActionMenu({
     e.preventDefault();
     if (!title.trim()) return;
     startTransition(async () => {
-      await updateNote(note.id, title, note.content, note.notebookId);
+      await updateNote(note.id, title.trim());
       setIsRenaming(false);
       setIsOpen(false);
     });

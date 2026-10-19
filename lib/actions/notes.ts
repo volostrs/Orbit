@@ -25,14 +25,14 @@ export async function getNotes(userId: string) {
     .orderBy(desc(notes.updatedAt));
 }
 
-export async function createNote(userId: string, notebookId?: string) {
+export async function createNote(userId: string, notebookId?: string, title?: string) {
   await ensureUserExists(userId);
 
   const [newNote] = await db
     .insert(notes)
     .values({
-      title: "Untitled Note",
-      content: {},
+      title: title?.trim() || "Untitled Note",
+      content: [],
       userId,
       notebookId: notebookId || null,
     })
@@ -42,10 +42,12 @@ export async function createNote(userId: string, notebookId?: string) {
   return newNote;
 }
 
+// Partial update: fields passed as undefined are left untouched (drizzle skips undefined). The editor
+// relies on this so autosaving content never rewrites a title or notebook changed from the sidebar.
 export async function updateNote(
   id: string,
-  title: string,
-  content: Record<string, unknown> | unknown[],
+  title?: string,
+  content?: Record<string, unknown> | unknown[],
   notebookId?: string | null
 ) {
   const [updated] = await db

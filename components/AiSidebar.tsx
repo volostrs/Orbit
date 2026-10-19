@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
-import { ArrowRight, ArrowUp, PanelRightClose, Square } from "lucide-react";
+import { ArrowRight, ArrowUp, ChevronDown, PanelRightClose, Plus, Square } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { BlockNoteEditor } from "@blocknote/core";
 import { applyProposal } from "@/lib/ai/applyProposal";
 import { PROPOSAL_MARKER, type Proposal } from "@/lib/ai/proposal";
 import { AiMarkdown } from "@/components/AiMarkdown";
+import { FloatingPopover } from "@/components/ui/floating-popover";
+import { saveConversationNotice } from "@/lib/actions/conversations";
 
 interface Message {
   id: string;
@@ -19,6 +22,11 @@ interface Message {
 // What the client genuinely knows about an in-flight request: nothing has come back yet, or the stream is open.
 type RunStage = "waiting" | "streaming";
 
+export interface ChatItem {
+  id: string;
+  title: string;
+}
+
 interface AiSidebarProps {
   isOpen: boolean;
   onCloseHref: string;
@@ -28,7 +36,15 @@ interface AiSidebarProps {
   getEditor: (noteId: string) => BlockNoteEditor<any, any, any> | null;
   // A message to send on the user's behalf (e.g. from the draft-assist notification), once, for that note.
   autoPrompt?: { id: string; noteId: string; text: string } | null;
+  // This note's saved chats (newest first), the one the URL selects (null = an unsaved new-chat draft), and
+  // that chat's saved messages as loaded from the database.
+  chats: ChatItem[];
+  activeChatId: string | null;
+  initialMessages: Message[];
+  maxChats: number;
 }
+
+type ChatError = { text: string; retryable: boolean };
 
 const STARTERS = [
   "Summarize this note",
@@ -68,36 +84,73 @@ export function AiSidebar({
   activeNoteTitle,
   activeNoteId,
   getEditor,
-  autoPrompt
+  autoPrompt,
+  chats,
+  activeChatId,
+  initialMessages,
+  maxChats,
 }: AiSidebarProps) {
+  const router = useRouter();
   const [width, setWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
   const [input, setInput] = useState("");
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
 
-  // Everything below is keyed by note id, so a conversation, a request in flight, an error or a pending
-  // proposal can only ever show up for the note it belongs to.
+  // The conversation on screen: the URL's choice (activeChatId), or null for an unsaved draft. After the first
+  // prompt of a draft is saved it moves to the new chat locally at once, and the URL catches up behind it.
+  const propSelection = `${activeNoteId}:${activeChatId ?? "draft"}`;
+  const [seenSelection, setSeenSelection] = useState(propSelection);
+  const [selected, setSelected] = useState<string | null>(activeChatId);
+  if (propSelection !== seenSelection) {
+    setSeenSelection(propSelection);
+    setSelected(activeChatId);
+  }
+  const convKey = selected ?? `draft:${activeNoteId}`;
+  const [localTitles, setLocalTitles] = useState<Record<string, string>>({});
+
+  // Everything below is keyed by conversation (a saved chat id, or `draft:<noteId>`), so messages, a request
+  // in flight, an error or a pending proposal can only ever show up in the conversation they belong to.
   const [chatSessions, setChatSessions] = useState<Record<string, Message[]>>({});
   const [runs, setRuns] = useState<Record<string, RunStage | undefined>>({});
-  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
-  // Pending AI proposals by the note id they were made for. Only the open note's proposal is shown,
-  // and it can only be applied to that note's editor, so switching notes can never misdirect it.
+  const [errors, setErrors] = useState<Record<string, ChatError | undefined>>({});
+  // Pending AI proposals by the conversation they were made in. Only that conversation shows its proposal, and
+  // it can only be applied to the note it was made for. Proposals are never saved: after a reload the reply
+  // text is restored, but there is nothing to accept.
   const [proposals, setProposals] = useState<Record<string, Proposal | undefined>>({});
   const controllers = useRef<Record<string, AbortController | undefined>>({});
 
-  const messages = chatSessions[activeNoteId] || [];
-  const stage = runs[activeNoteId];
-  const error = errors[activeNoteId];
-  const proposal = proposals[activeNoteId];
+  // Saved messages are shown straight from the server's copy; the first time a conversation is touched here its
+  // session is seeded from that copy, and from then on the live session is the source of truth.
+  const messages = chatSessions[convKey] ?? (selected ? initialMessages : []);
+  const stage = runs[convKey];
+  const error = errors[convKey];
+  const proposal = proposals[convKey];
   const busy = stage !== undefined;
+  const atLimit = chats.length >= maxChats;
+
+  useEffect(() => {
+    if (!selected) return;
+    setChatSessions((prev) => (selected in prev ? prev : { ...prev, [selected]: initialMessages }));
+    // Seed once per conversation; later server copies (autosave refreshes) must not overwrite the live session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
+
+  // An unsaved draft is empty by definition: once its first prompt has been saved elsewhere, reset it.
+  useEffect(() => {
+    if (selected) setChatSessions((prev) => (prev[`draft:${activeNoteId}`]?.length ? { ...prev, [`draft:${activeNoteId}`]: [] } : prev));
+  }, [selected, activeNoteId]);
 
   // Send an auto prompt exactly once, only for the note it was made for, once the sidebar is open.
-  const sendRef = useRef<(text: string) => void>(() => {});
+  const sendRef = useRef<(text: string, title?: string) => void>(() => {});
   const handledPrompt = useRef<string | null>(null);
   useEffect(() => {
     if (!isOpen || !autoPrompt || autoPrompt.noteId !== activeNoteId || handledPrompt.current === autoPrompt.id) return;
+    // Wait for the new-chat draft to be on screen (unless all chats are used: then it goes to the open chat).
+    if (selected !== null && chats.length < maxChats) return;
     handledPrompt.current = autoPrompt.id;
-    sendRef.current(autoPrompt.text);
-  }, [isOpen, autoPrompt, activeNoteId]);
+    sendRef.current(autoPrompt.text, "Improve this note");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, autoPrompt, activeNoteId, selected]);
 
   // Leaving the app: don't leave requests running.
   useEffect(() => {
@@ -114,11 +167,11 @@ export function AiSidebar({
   };
   useEffect(() => {
     stick.current = true;
-  }, [activeNoteId]);
+  }, [convKey]);
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages, stage, error, proposal, activeNoteId, isOpen]);
+  }, [messages, stage, error, proposal, convKey, isOpen]);
 
   // Grow the composer with its content, up to a limit.
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -160,51 +213,75 @@ export function AiSidebar({
     };
   }, [isResizing, resize, stopResizing]);
 
-  const patchSession = (noteId: string, fn: (list: Message[]) => Message[]) =>
-    setChatSessions((prev) => ({ ...prev, [noteId]: fn(prev[noteId] || []) }));
-  const addNotice = (noteId: string, content: string) =>
-    patchSession(noteId, (l) => [...l, { id: newId(), role: "assistant", content, kind: "notice" }]);
+  const patchSession = (key: string, fn: (list: Message[]) => Message[]) =>
+    setChatSessions((prev) => ({ ...prev, [key]: fn(prev[key] || []) }));
+  // Notices are shown at once and saved with the chat (when it is saved), but never sent to the model.
+  const addNotice = (key: string, noteId: string, chatId: string | null, content: string) => {
+    patchSession(key, (l) => [...l, { id: newId(), role: "assistant", content, kind: "notice" }]);
+    if (chatId) void saveConversationNotice(noteId, chatId, content).catch(() => {});
+  };
 
-  // One request for one note. `history` ends with the user's message. Reuses the existing /api/chat
-  // stream: text first, then (optionally) a proposal behind PROPOSAL_MARKER.
-  const run = async (noteId: string, history: Message[]) => {
+  // One request for one conversation of one note. The server owns the history: only the NEW message is sent
+  // (plus ids), and the stream is the existing /api/chat text stream, then (optionally) a proposal behind
+  // PROPOSAL_MARKER. `chatId` is null for the first prompt of a draft, which creates the saved chat.
+  const run = async (o: { noteId: string; key: string; chatId: string | null; text: string; retry?: boolean; title?: string; userMsgId?: string }) => {
+    const { noteId, text } = o;
+    let key = o.key;
+    let chatId = o.chatId;
     const ctrl = new AbortController();
-    controllers.current[noteId] = ctrl;
-    setRuns((p) => ({ ...p, [noteId]: "waiting" }));
-    setErrors((p) => ({ ...p, [noteId]: undefined }));
+    controllers.current[key] = ctrl;
+    setRuns((p) => ({ ...p, [key]: "waiting" }));
+    setErrors((p) => ({ ...p, [key]: undefined }));
 
     const replyId = newId();
     let started = false;
     const showReply = (content: string, kind?: Message["kind"]) => {
       if (!started) {
         started = true;
-        patchSession(noteId, (l) => [...l, { id: replyId, role: "assistant", content, kind }]);
+        patchSession(key, (l) => [...l, { id: replyId, role: "assistant", content, kind }]);
       } else {
-        patchSession(noteId, (l) => l.map((m) => (m.id === replyId ? { ...m, content, kind } : m)));
+        patchSession(key, (l) => l.map((m) => (m.id === replyId ? { ...m, content, kind } : m)));
       }
     };
 
     let assistantContent = "";
     let gotProposal = false;
+    const startKey = key;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctrl.signal,
-        body: JSON.stringify({
-          messages: history
-            .filter((m) => m.kind !== "notice")
-            .map(({ role, content }) => ({ role, content })),
-          // The server loads and translates this note itself; raw editor JSON is not sent.
-          noteId,
-        }),
+        body: JSON.stringify({ noteId, conversationId: chatId, text, retry: o.retry === true, title: o.title }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.error || `Request failed (${res.status})`);
+        // Nothing was saved or sent: take the optimistic message back and give the text back to the user.
+        if (o.userMsgId) patchSession(key, (l) => l.filter((m) => m.id !== o.userMsgId));
+        setInput((cur) => cur || text);
+        setErrors((p) => ({ ...p, [key]: { text: data?.error || `Request failed (${res.status}). Your message was not sent.`, retryable: false } }));
+        return;
       }
       if (!res.body) throw new Error("No response body");
+
+      // First prompt of a draft: the server just created the saved chat. Move this conversation there.
+      const createdId = res.headers.get("X-Orbit-Conversation");
+      if (!chatId && createdId) {
+        const from = key; // captured: the updaters below run later, after `key` has been reassigned
+        chatId = createdId;
+        const title = decodeURIComponent(res.headers.get("X-Orbit-Conversation-Title") || "");
+        if (title) setLocalTitles((p) => ({ ...p, [createdId]: title }));
+        setChatSessions((p) => ({ ...p, [createdId]: p[from] || [] }));
+        setProposals((p) => ({ ...p, [createdId]: p[from] }));
+        setRuns((p) => ({ ...p, [createdId]: "waiting", [from]: undefined }));
+        setErrors((p) => ({ ...p, [createdId]: p[from] }));
+        controllers.current[createdId] = ctrl;
+        controllers.current[from] = undefined;
+        key = createdId;
+        setSelected(createdId);
+        router.replace(`/?noteId=${noteId}&aiOpen=true&chatId=${createdId}`);
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -218,19 +295,19 @@ export function AiSidebar({
         // Anything after the marker is a machine-readable proposal, not chat text.
         assistantContent = raw.split(PROPOSAL_MARKER)[0];
         if (assistantContent) {
-          setRuns((p) => ({ ...p, [noteId]: "streaming" }));
+          setRuns((p) => ({ ...p, [key]: "streaming" }));
           showReply(assistantContent);
         }
       }
 
-      // A proposal is only stored (never applied) and only if it was made for this note.
+      // A proposal is only held in memory (never applied here) and only if it was made for this note AND chat.
       const markerAt = raw.indexOf(PROPOSAL_MARKER);
       if (markerAt !== -1) {
         try {
           const p = JSON.parse(raw.slice(markerAt + PROPOSAL_MARKER.length)) as Proposal;
-          if (p && p.noteId === noteId && Array.isArray(p.ops) && Array.isArray(p.preview)) {
+          if (p && p.noteId === noteId && p.conversationId === chatId && Array.isArray(p.ops) && Array.isArray(p.preview)) {
             gotProposal = true;
-            setProposals((prev) => ({ ...prev, [noteId]: p }));
+            setProposals((prev) => ({ ...prev, [key]: p }));
             showReply(assistantContent, "proposal");
           }
         } catch {
@@ -238,60 +315,70 @@ export function AiSidebar({
         }
       }
       if (!assistantContent.trim() && !gotProposal) {
-        setErrors((p) => ({ ...p, [noteId]: "No response came back. Your note was not changed." }));
+        setErrors((p) => ({ ...p, [key]: { text: "No response came back. Your note was not changed.", retryable: true } }));
       }
     } catch (err) {
       if ((err as Error)?.name === "AbortError") {
-        addNotice(noteId, "Stopped. Your note was not changed.");
+        addNotice(key, noteId, chatId, "Stopped. Your note was not changed.");
       } else {
         console.error("Chat request failed:", err);
-        setErrors((p) => ({ ...p, [noteId]: "Something went wrong reaching the assistant. Your note was not changed." }));
+        setErrors((p) => ({ ...p, [key]: { text: "Something went wrong reaching the assistant. Your note was not changed.", retryable: true } }));
       }
     } finally {
-      if (controllers.current[noteId] === ctrl) controllers.current[noteId] = undefined;
-      setRuns((p) => ({ ...p, [noteId]: undefined }));
+      if (controllers.current[key] === ctrl) controllers.current[key] = undefined;
+      setRuns((p) => ({ ...p, [key]: undefined, [startKey]: undefined }));
     }
   };
 
-  const handleSend = (text: string) => {
+  const handleSend = (text: string, title?: string) => {
     const trimmed = text.trim();
-    // One request at a time per note; the rest of Orbit stays fully usable meanwhile.
-    if (!trimmed || !activeNoteId || runs[activeNoteId]) return;
+    // One request at a time per conversation; the rest of Orbit stays fully usable meanwhile.
+    if (!trimmed || !activeNoteId || runs[convKey]) return;
+    let key = convKey;
+    let chatId = selected;
+    // An automatic prompt with all chats used goes to the open (or newest) chat rather than failing.
+    if (!chatId && atLimit && title) {
+      chatId = chats[0]?.id ?? null;
+      if (chatId) key = chatId;
+    }
     setInput("");
     stick.current = true;
-    const history: Message[] = [...messages, { id: newId(), role: "user", content: trimmed }];
-    setChatSessions((prev) => ({ ...prev, [activeNoteId]: history }));
-    void run(activeNoteId, history);
+    const userMsg: Message = { id: newId(), role: "user", content: trimmed };
+    const base = chatSessions[key] ?? (chatId && chatId === selected ? initialMessages : []);
+    setChatSessions((prev) => ({ ...prev, [key]: [...base, userMsg] }));
+    void run({ noteId: activeNoteId, key, chatId, text: trimmed, title, userMsgId: userMsg.id });
   };
   sendRef.current = handleSend;
 
-  const stop = () => controllers.current[activeNoteId]?.abort();
+  const stop = () => controllers.current[convKey]?.abort();
 
   // Resend the last user message, dropping whatever partial reply followed it.
   const retry = () => {
-    if (runs[activeNoteId]) return;
+    if (runs[convKey]) return;
     const lastUser = messages.map((m) => m.role).lastIndexOf("user");
     if (lastUser === -1) return;
-    const history = messages.slice(0, lastUser + 1);
     stick.current = true;
-    setChatSessions((prev) => ({ ...prev, [activeNoteId]: history }));
-    void run(activeNoteId, history);
+    setChatSessions((prev) => ({ ...prev, [convKey]: messages.slice(0, lastUser + 1) }));
+    void run({ noteId: activeNoteId, key: convKey, chatId: selected, text: messages[lastUser].content, retry: true });
   };
 
   const rejectProposal = () => {
-    setProposals((prev) => ({ ...prev, [activeNoteId]: undefined }));
-    addNotice(activeNoteId, "Proposal rejected. Your note was not changed.");
+    setProposals((prev) => ({ ...prev, [convKey]: undefined }));
+    addNotice(convKey, activeNoteId, selected, "Proposal rejected. Your note was not changed.");
   };
 
   const acceptProposal = () => {
     if (!proposal) return;
     const editor = getEditor(activeNoteId);
     const result = editor
-      ? applyProposal(editor, proposal, activeNoteId)
+      ? applyProposal(editor, proposal, activeNoteId, selected)
       : ({ ok: false, error: "The note editor isn't ready. Your note was not changed." } as const);
-    setProposals((prev) => ({ ...prev, [activeNoteId]: undefined }));
-    addNotice(activeNoteId, result.ok ? "Changes applied to your note." : result.error);
+    setProposals((prev) => ({ ...prev, [convKey]: undefined }));
+    addNotice(convKey, activeNoteId, selected, result.ok ? "Changes applied to your note." : result.error);
   };
+
+  const chatHref = (id: string) => `/?noteId=${activeNoteId}&aiOpen=true&chatId=${id}`;
+  const currentTitle = selected ? chats.find((c) => c.id === selected)?.title ?? localTitles[selected] ?? "Chat" : "New chat";
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -325,7 +412,48 @@ export function AiSidebar({
       {/* Header */}
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-neutral-800 px-4">
         <div className="min-w-0">
-          <h2 className="text-[13px] font-medium leading-4 text-neutral-100">Orbit AI</h2>
+          <FloatingPopover
+            open={chatMenuOpen}
+            onOpenChange={setChatMenuOpen}
+            triggerLabel={`Chat: ${currentTitle}. Switch chat`}
+            triggerClassName={`flex max-w-full items-center gap-1 rounded text-left text-[13px] font-medium leading-4 text-neutral-100 hover:text-white ${focusRing}`}
+            trigger={
+              <>
+                <span className="truncate">{currentTitle}</span>
+                <ChevronDown className="h-3 w-3 shrink-0 text-neutral-500" />
+              </>
+            }
+            align="start"
+            className="w-64 py-1"
+          >
+            <p className="px-3 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-500">Chats for this note</p>
+            {chats.length === 0 && <p className="px-3 py-1.5 text-neutral-500">No saved chats yet.</p>}
+            {chats.map((c) => (
+              <Link
+                key={c.id}
+                href={chatHref(c.id)}
+                onClick={() => setChatMenuOpen(false)}
+                aria-current={c.id === selected ? "true" : undefined}
+                className={`block truncate px-3 py-1.5 hover:bg-neutral-800 ${c.id === selected ? "bg-neutral-800 text-neutral-100" : "text-neutral-300"}`}
+              >
+                {c.title}
+              </Link>
+            ))}
+            <div className="my-1 border-t border-neutral-800" />
+            {atLimit ? (
+              <p className="px-3 py-1.5 leading-4 text-neutral-500">
+                This note has {maxChats} saved chats, the maximum. Open one above, or delete one from AI Chats to start a new one.
+              </p>
+            ) : (
+              <Link
+                href={`/?noteId=${activeNoteId}&aiOpen=true&chatId=new`}
+                onClick={() => setChatMenuOpen(false)}
+                className="flex items-center gap-2 px-3 py-1.5 text-neutral-200 hover:bg-neutral-800"
+              >
+                <Plus className="h-3.5 w-3.5" /> New chat
+              </Link>
+            )}
+          </FloatingPopover>
           <p className="truncate text-[11px] leading-4 text-neutral-500">{activeNoteTitle || "Untitled"}</p>
         </div>
         <Link
@@ -395,13 +523,15 @@ export function AiSidebar({
 
             {error && (
               <li className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-900/60 px-3.5 py-2.5">
-                <p role="alert" className="text-[12px] leading-5 text-neutral-300">{error}</p>
-                <button
-                  onClick={retry}
-                  className={`shrink-0 rounded-md border border-neutral-700 px-2.5 py-1 text-[12px] text-neutral-200 transition-colors hover:bg-neutral-800 ${focusRing}`}
-                >
-                  Retry
-                </button>
+                <p role="alert" className="text-[12px] leading-5 text-neutral-300">{error.text}</p>
+                {error.retryable && (
+                  <button
+                    onClick={retry}
+                    className={`shrink-0 rounded-md border border-neutral-700 px-2.5 py-1 text-[12px] text-neutral-200 transition-colors hover:bg-neutral-800 ${focusRing}`}
+                  >
+                    Retry
+                  </button>
+                )}
               </li>
             )}
 

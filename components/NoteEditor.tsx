@@ -38,6 +38,14 @@ export function NoteEditor({
   onAppearanceChange: (patch: Partial<NoteAppearance>) => void;
 }) {
   const [title, setTitle] = useState(note.title);
+  // A rename from the sidebar changes note.title while this editor stays mounted; follow it.
+  // Titles this editor saved itself are echoed back by revalidation (possibly late), so those are ignored.
+  const sentTitles = useRef(new Set<string>([note.title]));
+  const [seenTitle, setSeenTitle] = useState(note.title);
+  if (note.title !== seenTitle) {
+    setSeenTitle(note.title);
+    if (!sentTitles.current.has(note.title)) setTitle(note.title);
+  }
   const [isPending, startTransition] = useTransition();
 
   // Latest editor content, so title edits don't re-save the content the note was opened with.
@@ -49,22 +57,17 @@ export function NoteEditor({
     startTransition(async () => {
       await updateNote(
         note.id,
-        title,
-        newContent as unknown as Record<string, unknown>,
-        note.notebookId
+        undefined,
+        newContent as unknown as Record<string, unknown>
       );
     });
   };
 
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);
+    sentTitles.current.add(newTitle);
     startTransition(async () => {
-      await updateNote(
-        note.id,
-        newTitle,
-        latestContent.current as Record<string, unknown>,
-        note.notebookId
-      );
+      await updateNote(note.id, newTitle);
     });
   };
 

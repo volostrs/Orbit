@@ -16,8 +16,11 @@ const current = (b: any) => (ADVANCED.has(b.type) ? String(b.props?.data ?? "") 
  * autosaves the result through the open note's existing save path. Blocks the proposal does not
  * mention (including advanced blocks, their data, colors and icons) are never touched.
  */
-export function applyProposal(editor: BlockNoteEditor<any, any, any>, proposal: Proposal, activeNoteId: string): ApplyResult {
+export function applyProposal(editor: BlockNoteEditor<any, any, any>, proposal: Proposal, activeNoteId: string, activeConversationId?: string | null): ApplyResult {
   if (proposal.noteId !== activeNoteId) return { ok: false, error: "This proposal belongs to a different note." };
+  if (proposal.conversationId && activeConversationId && proposal.conversationId !== activeConversationId) {
+    return { ok: false, error: "This proposal belongs to a different chat." };
+  }
 
   const doc = editor.document;
   if (!doc.length) return { ok: false, error: "The editor is not ready." };

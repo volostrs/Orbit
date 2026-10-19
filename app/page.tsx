@@ -2,50 +2,13 @@ import { getNotes } from "@/lib/actions/notes";
 import { getNotebooks } from "@/lib/actions/notebooks";
 import { ToastProvider } from "@/components/ui/toast";
 import { SidebarNav } from "@/components/SidebarNav";
-import { DynamicIcon } from "@/components/DynamicIcon";
+import { DashboardView } from "@/components/dashboard/DashboardView";
 import { NavShell } from "@/components/NavShell";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { NoteWorkspace } from "@/components/NoteWorkspace";
 import { AiChatsView } from "@/components/AiChatsView";
 import { listChatsForUser, listMessages, MAX_CONVERSATIONS_PER_NOTE, type ChatSummary, type StoredMessage } from "@/lib/ai/conversations";
 import { CalendarDays } from "lucide-react";
-import Link from "next/link";
-import type { Note, Notebook } from "@/lib/db/schema";
-
-function Dashboard({ notes, notebooks }: { notes: Omit<Note, "content">[]; notebooks: Notebook[] }) {
-  const favorites = notes.filter((n) => n.isFavorite);
-  const link = (n: Omit<Note, "content">) => (
-    <li key={n.id}>
-      <Link
-        href={`/?noteId=${n.id}`}
-        className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
-      >
-        <DynamicIcon name={n.icon || "FileText"} color={n.iconColor || "#10b981"} className="h-4 w-4 shrink-0" />
-        <span className="truncate">{n.title || "Untitled"}</span>
-      </Link>
-    </li>
-  );
-  return (
-    <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-14 md:px-12 md:pt-16">
-      <h2 className="text-2xl font-semibold text-neutral-100">Dashboard</h2>
-      <p className="mt-1 text-sm text-neutral-500">
-        {notes.length} note{notes.length === 1 ? "" : "s"} across {notebooks.length} notebook{notebooks.length === 1 ? "" : "s"}.
-      </p>
-      <h3 className="mt-8 text-xs font-medium uppercase tracking-wider text-neutral-500">Recently edited</h3>
-      {notes.length === 0 ? (
-        <p className="mt-2 text-sm text-neutral-500">No notes yet. Create one from the sidebar.</p>
-      ) : (
-        <ul className="mt-2">{notes.slice(0, 6).map(link)}</ul>
-      )}
-      {favorites.length > 0 && (
-        <>
-          <h3 className="mt-8 text-xs font-medium uppercase tracking-wider text-neutral-500">Favorites</h3>
-          <ul className="mt-2">{favorites.map(link)}</ul>
-        </>
-      )}
-    </div>
-  );
-}
 
 function CalendarPlaceholder() {
   return (
@@ -120,7 +83,7 @@ export default async function Page({
 
       {view === "dashboard" && (
         <section className="h-full min-w-0 flex-1 overflow-y-auto bg-black">
-          <Dashboard notes={summaries} notebooks={notebooks} />
+          <DashboardView data={{ notes: summaries, notebooks }} />
         </section>
       )}
       {view === "chats" && (

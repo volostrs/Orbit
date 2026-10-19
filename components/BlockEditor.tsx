@@ -16,13 +16,15 @@ import {
 } from "@blocknote/react";
 import { useEffect } from "react";
 import { useTheme } from "next-themes";
-import { BarChart3, CalendarCheck, Table2 } from "lucide-react";
+import { BarChart3, CalendarCheck, CalendarDays, Clock, Table2 } from "lucide-react";
 import { moveCustomBlocksOnDrop } from "./blocks/moveBlockOnDrop";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import { dataTableBlock, DEFAULT_TABLE_DATA } from "./blocks/DataTableBlock";
 import { habitTrackerBlock, DEFAULT_HABIT_DATA } from "./blocks/HabitTrackerBlock";
 import { chartBlock, DEFAULT_CHART_DATA } from "./blocks/ChartBlock";
+import { calendarBlock, DEFAULT_CALENDAR_DATA } from "./blocks/CalendarBlock";
+import { clockBlock, DEFAULT_CLOCK_DATA } from "./blocks/ClockBlock";
 
 const schema = BlockNoteSchema.create({
   blockSpecs: {
@@ -30,6 +32,8 @@ const schema = BlockNoteSchema.create({
     dataTable: dataTableBlock(),
     habitTracker: habitTrackerBlock(),
     chart: chartBlock(),
+    calendar: calendarBlock(),
+    clock: clockBlock(),
   },
 });
 
@@ -116,7 +120,31 @@ export default function BlockEditor({ initialContent, onChange, onEditorReady }:
                   props: { data: DEFAULT_CHART_DATA() },
                 }),
             };
-            items.splice(tableIndex === -1 ? items.length : tableIndex + 1, 0, dataTableItem, habitItem, chartItem);
+            const calendarItem = {
+              title: "Calendar",
+              subtext: "Month calendar with your own events",
+              aliases: ["calendar", "month", "events", "schedule"],
+              group: "Advanced",
+              icon: <CalendarDays size={18} />,
+              onItemClick: () =>
+                insertOrUpdateBlockForSlashMenu(editor, {
+                  type: "calendar",
+                  props: { data: DEFAULT_CALENDAR_DATA() },
+                }),
+            };
+            const clockItem = {
+              title: "Clock",
+              subtext: "Live digital clock",
+              aliases: ["clock", "time", "watch"],
+              group: "Advanced",
+              icon: <Clock size={18} />,
+              onItemClick: () =>
+                insertOrUpdateBlockForSlashMenu(editor, {
+                  type: "clock",
+                  props: { data: DEFAULT_CLOCK_DATA() },
+                }),
+            };
+            items.splice(tableIndex === -1 ? items.length : tableIndex + 1, 0, dataTableItem, habitItem, chartItem, calendarItem, clockItem);
             return filterSuggestionItems(items, query);
           }}
         />

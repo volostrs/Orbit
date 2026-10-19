@@ -41,7 +41,7 @@ function parseTable(data: unknown): { header: string[]; rows: string[][] } | nul
   }
 }
 
-const CUSTOM_LABEL: Record<string, string> = { dataTable: "a data table", habitTracker: "a habit tracker", chart: "a chart" };
+const CUSTOM_LABEL: Record<string, string> = { dataTable: "a data table", habitTracker: "a habit tracker", chart: "a chart", calendar: "a calendar", clock: "a clock" };
 
 // First readable text of a note, whitespace-collapsed and cut to `max` characters. Notes with no text but with
 // special blocks get a short description instead of looking empty.
@@ -113,7 +113,9 @@ export function noteToMarkdown(title: string, content: unknown): string {
         }
         case "habitTracker":
         case "chart":
-          lines.push(`_(${b.type === "chart" ? "Chart" : "Habit tracker"} not included in text export)_`, "");
+        case "calendar":
+        case "clock":
+          lines.push(`_(${b.type === "chart" ? "Chart" : b.type === "calendar" ? "Calendar" : b.type === "clock" ? "Clock" : "Habit tracker"} not included in text export)_`, "");
           break;
         default:
           if (text) lines.push(text, "");

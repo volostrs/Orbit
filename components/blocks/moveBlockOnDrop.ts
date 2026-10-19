@@ -1,7 +1,7 @@
 import type { BlockNoteEditor } from "@blocknote/core";
 
 // Custom blocks whose drag-and-drop move we coordinate ourselves.
-const MOVABLE = new Set(["dataTable", "habitTracker", "chart"]);
+const MOVABLE = new Set(["dataTable", "habitTracker", "chart", "calendar", "clock"]);
 
 /**
  * Moves a dragged custom block (data table, habit tracker, chart) as destination-copy followed by

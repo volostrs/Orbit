@@ -56,6 +56,12 @@ function parseJson(raw: unknown): any {
 
 const cell = (v: unknown) => String(v ?? "").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim();
 
+// The development test marker is for the UI only: it is hidden from AI-facing text so it can never act as an
+// instruction or content. The stored document is never modified. Outside production only.
+const TEST_MARKER = "[[ORBIT_TEST_AI_NOTIFICATION]]";
+export const stripTestMarker = (text: string) =>
+  process.env.NODE_ENV === "production" ? text : text.split(TEST_MARKER).join("");
+
 // Inline content (text runs, links, nested custom inline) -> plain text.
 export function inlineText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -208,7 +214,7 @@ export function translateWithRefs(content: unknown, today: Date = new Date()): {
   } catch {
     out.push("[Part of this note could not be translated.]");
   }
-  return { text: out.length ? out.join("\n") : "(This note is empty.)", refs };
+  return { text: out.length ? stripTestMarker(out.join("\n")) : "(This note is empty.)", refs };
 }
 
 /** Full AI context for one note: guidance + title + translated body, capped for token safety. */

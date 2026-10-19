@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   jsonb,
   pgTable,
   smallint,
@@ -97,9 +98,28 @@ export const noteRelations = relations(notes, ({ one }) => ({
   }),
 }));
 
+// Dashboard calendar events. `eventDate` is a plain calendar date (no time zone), read and written as "YYYY-MM-DD".
+// (No auth yet: events are scoped by user id like notes, which is not per-user authorization.)
+export const calendarEvents = pgTable("calendar_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  eventDate: date("event_date", { mode: "string" }).notNull(),
+  description: text("description").notNull().default(""),
+  // Optional times as "HH:MM" (no time zone). allDay events carry no times.
+  allDay: boolean("all_day").notNull().default(true),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type Notebook = typeof notebooks.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type AiConversation = typeof aiConversations.$inferSelect;
 export type AiMessage = typeof aiMessages.$inferSelect;
+export type CalendarEvent = typeof calendarEvents.$inferSelect;

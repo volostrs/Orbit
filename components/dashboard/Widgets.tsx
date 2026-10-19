@@ -4,15 +4,23 @@ import { useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { DynamicIcon } from "@/components/DynamicIcon";
-import type { Note, Notebook } from "@/lib/db/schema";
+import type { CalendarEvent, Note, Notebook } from "@/lib/db/schema";
+import type { DashHabit } from "@/lib/notes/habits";
 import { COUNT_CHOICES, type LinkItem, newId, safeUrl, type Widget } from "@/lib/dashboard/config";
 import { DashImage } from "./DashImage";
+import { NotesGrid } from "./NotesGrid";
+import { CalendarWidget } from "./CalendarWidget";
 import { field, ImagePicker } from "./ImagePicker";
 
 export type NoteSummary = Omit<Note, "content">;
+// Dashboard notes carry a short plain-text preview computed on the server; the full document never reaches the client.
+export type DashNote = NoteSummary & { preview: string };
 export interface DashData {
-  notes: NoteSummary[];
+  notes: DashNote[];
   notebooks: Notebook[];
+  userId: string;
+  events: CalendarEvent[];
+  habits: DashHabit[];
 }
 
 const when = (d: Date | string) => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -30,13 +38,15 @@ function NoteLink({ n, date }: { n: NoteSummary; date?: Date | string }) {
   );
 }
 
-function NoteList({ notes, empty, date }: { notes: NoteSummary[]; empty: string; date?: "updatedAt" | "createdAt" }) {
+function NoteList({ notes, empty, date }: { notes: DashNote[]; empty: string; date?: "updatedAt" | "createdAt" }) {
   if (notes.length === 0) return <p className={muted}>{empty}</p>;
   return <ul className="-mx-2">{notes.map((n) => <NoteLink key={n.id} n={n} date={date ? n[date] : undefined} />)}</ul>;
 }
 
 export const widgetTitle = (w: Widget): string => {
   switch (w.type) {
+    case "notes": return "";
+    case "calendar": return "";
     case "overview": return "Notes overview";
     case "edited": return "Recently edited";
     case "recent": return "Recent notes";
@@ -49,9 +59,13 @@ export const widgetTitle = (w: Widget): string => {
   }
 };
 
-export function WidgetBody({ w, data }: { w: Widget; data: DashData }) {
+export function WidgetBody({ w, data, accent = "", onPatch }: { w: Widget; data: DashData; accent?: string; onPatch?: (patch: Partial<Widget>) => void }) {
   const { notes, notebooks } = data;
   switch (w.type) {
+    case "calendar":
+      return <CalendarWidget w={w} data={data} accent={accent} onPatch={(p) => onPatch?.(p)} />;
+    case "notes":
+      return <NotesGrid data={data} />;
     case "overview": {
       const stats = [
         ["Notes", notes.length],
@@ -77,7 +91,7 @@ export function WidgetBody({ w, data }: { w: Widget; data: DashData }) {
     case "favorites":
       return <NoteList notes={notes.filter((n) => n.isFavorite).slice(0, w.count)} empty="No favorites yet. Star a note from the sidebar." />;
     case "pinned":
-      return <NoteList notes={w.noteIds.map((id) => notes.find((n) => n.id === id)).filter((n): n is NoteSummary => !!n)} empty="Nothing pinned. Use Customize to choose notes." />;
+      return <NoteList notes={w.noteIds.map((id) => notes.find((n) => n.id === id)).filter((n): n is DashNote => !!n)} empty="Nothing pinned. Use Customize to choose notes." />;
     case "notebooks": {
       if (notebooks.length === 0) return <p className={muted}>No notebooks yet. Create one from the sidebar.</p>;
       return (
@@ -147,7 +161,7 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }) 
 
 // Per-widget settings, shown inline under the widget while customizing. Returns null for widgets with nothing to set.
 export function hasSettings(w: Widget) {
-  return !["overview", "notebooks"].includes(w.type);
+  return !["overview", "notebooks", "notes"].includes(w.type);
 }
 
 export function WidgetSettings({ w, data, update }: { w: Widget; data: DashData; update: (patch: Partial<Widget>) => void }) {
@@ -162,6 +176,13 @@ export function WidgetSettings({ w, data, update }: { w: Widget; data: DashData;
             {COUNT_CHOICES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </Row>
+      );
+    case "calendar":
+      return (
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
+          <input type="checkbox" checked={w.showHabits} disabled={w.size === "compact"} onChange={(e) => set({ showHabits: e.target.checked })} />
+          Show habits panel (Medium and Wide sizes)
+        </label>
       );
     case "pinned":
       return (

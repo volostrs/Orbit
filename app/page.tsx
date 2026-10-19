@@ -3,24 +3,15 @@ import { getNotebooks } from "@/lib/actions/notebooks";
 import { ToastProvider } from "@/components/ui/toast";
 import { SidebarNav } from "@/components/SidebarNav";
 import { DashboardView } from "@/components/dashboard/DashboardView";
+import { notePreview } from "@/lib/notes/text";
+import { extractHabits } from "@/lib/notes/habits";
+import { listCalendarEvents } from "@/lib/actions/calendar";
 import { NavShell } from "@/components/NavShell";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { NoteWorkspace } from "@/components/NoteWorkspace";
 import { AiChatsView } from "@/components/AiChatsView";
 import { listChatsForUser, listMessages, MAX_CONVERSATIONS_PER_NOTE, type ChatSummary, type StoredMessage } from "@/lib/ai/conversations";
-import { CalendarDays } from "lucide-react";
-
-function CalendarPlaceholder() {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <CalendarDays className="h-8 w-8 text-neutral-500" />
-      <p className="text-sm font-medium text-neutral-200">Calendar</p>
-      <p className="max-w-xs text-xs leading-5 text-neutral-500">
-        The calendar isn&apos;t built yet. Your notes and notebooks are untouched; pick one from the sidebar to keep working.
-      </p>
-    </div>
-  );
-}
+import { CalendarView } from "@/components/calendar/CalendarView";
 
 export default async function Page({
   searchParams,
@@ -55,8 +46,23 @@ export default async function Page({
     }
   }
 
+  // Calendar events and habits are only needed for the Dashboard and Calendar pages. A missing events table must not take the page down.
+  let dashEvents: Awaited<ReturnType<typeof listCalendarEvents>> = [];
+  let dashHabits: ReturnType<typeof extractHabits> = [];
+  if (view === "dashboard" || view === "calendar") {
+    try {
+      dashEvents = await listCalendarEvents(testUserId);
+    } catch (err) {
+      console.error("Could not load calendar events:", err instanceof Error ? err.message : err);
+    }
+    dashHabits = extractHabits(notes);
+  }
+
   // The sidebar never needs note bodies; leaving them out keeps the client payload small.
   const summaries = notes.map(({ content: _content, ...rest }) => rest);
+  // Dashboard cards need a short text preview per note. It is cut from the content the page already loads, here on
+  // the server, so only the preview string (not the document) is sent to the browser.
+  const dashNotes = view === "dashboard" ? notes.map(({ content, ...rest }) => ({ ...rest, preview: notePreview(content) })) : [];
 
   return (
     <ToastProvider>
@@ -83,7 +89,7 @@ export default async function Page({
 
       {view === "dashboard" && (
         <section className="h-full min-w-0 flex-1 overflow-y-auto bg-black">
-          <DashboardView data={{ notes: summaries, notebooks }} />
+          <DashboardView data={{ notes: dashNotes, notebooks, userId: testUserId, events: dashEvents, habits: dashHabits }} />
         </section>
       )}
       {view === "chats" && (
@@ -93,7 +99,7 @@ export default async function Page({
       )}
       {view === "calendar" && (
         <section className="h-full min-w-0 flex-1 overflow-y-auto bg-black">
-          <CalendarPlaceholder />
+          <CalendarView userId={testUserId} events={dashEvents} habits={dashHabits} />
         </section>
       )}
       {/* Always rendered (hidden under a view) so the open note's editor is never unmounted. */}

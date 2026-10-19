@@ -104,3 +104,27 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Dashboard greeting: a short, calm fade-and-rise. Disabled for reduced-motion users. */
+@keyframes orbit-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.orbit-rise {
+  animation: orbit-rise 0.45s ease-out both;
+}
+.orbit-rise-late {
+  animation: orbit-rise 0.45s ease-out 0.08s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-rise,
+  .orbit-rise-late {
+    animation: none;
+  }
+}

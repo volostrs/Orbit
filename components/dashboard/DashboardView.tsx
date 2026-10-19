@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Check, EyeOff, LayoutGrid, Palette, Plus, RotateCcw, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, EyeOff, GripVertical, LayoutGrid, Palette, Plus, RotateCcw, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
 import {
   type Appearance,
   CATALOG,
@@ -19,6 +19,7 @@ import { pruneImages } from "@/lib/dashboard/images";
 import { PALETTE, tint } from "@/components/blocks/blockStyle";
 import { useToast } from "@/components/ui/toast";
 import { DashImage } from "./DashImage";
+import { DashboardHeader } from "./DashboardHeader";
 import { type DashData, hasSettings, WidgetBody, WidgetSettings, widgetTitle } from "./Widgets";
 
 const SIZE_LABEL: Record<WidgetSize, string> = { compact: "Small", standard: "Medium", wide: "Wide" };
@@ -36,6 +37,9 @@ export function DashboardView({ data }: { data: DashData }) {
   const [openSettings, setOpenSettings] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const refs = useRef(new Map<string, HTMLElement>());
+  const gridRef = useRef<HTMLDivElement>(null);
+  // Drag-and-drop: pointer-based so it works with mouse, pen and touch, and only ever starts from a widget's handle.
+  const [drag, setDrag] = useState<{ id: string; indicator: { left: number; top: number; width: number; height: number } | null } | null>(null);
 
   useEffect(() => {
     // Read after mount so the server and first client render agree (preferences live in the browser).
@@ -88,6 +92,100 @@ export function DashboardView({ data }: { data: DashData }) {
       [widgets[i], widgets[j]] = [widgets[j], widgets[i]];
       return { ...c, widgets };
     });
+  // Move widget `id` to just before/after widget `targetId` (on the full list, so hidden widgets keep their place).
+  const moveTo = (id: string, targetId: string, pos: "before" | "after") =>
+    patch((c) => {
+      if (id === targetId) return c;
+      const moving = c.widgets.find((w) => w.id === id);
+      if (!moving) return c;
+      const rest = c.widgets.filter((w) => w.id !== id);
+      const at = rest.findIndex((w) => w.id === targetId);
+      if (at < 0) return c;
+      const widgets = [...rest.slice(0, at + (pos === "after" ? 1 : 0)), moving, ...rest.slice(at + (pos === "after" ? 1 : 0))];
+      return widgets.every((w, i) => w === c.widgets[i]) ? c : { ...c, widgets };
+    });
+
+  const startDrag = (e: React.PointerEvent, id: string) => {
+    if (e.button !== 0 || !gridRef.current) return;
+    e.preventDefault();
+    const grid = gridRef.current;
+    let scroller: HTMLElement | null = grid.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    let drop: { targetId: string; pos: "before" | "after" } | null = null;
+    setDrag({ id, indicator: null });
+
+    const measure = (x: number, y: number) => {
+      const g = grid.getBoundingClientRect();
+      let best: { id: string; r: DOMRect; d: number } | null = null;
+      refs.current.forEach((el, wid) => {
+        if (wid === id) return;
+        const r = el.getBoundingClientRect();
+        const dx = Math.max(r.left - x, 0, x - r.right);
+        const dy = Math.max(r.top - y, 0, y - r.bottom);
+        const d = Math.hypot(dx, dy);
+        if (!best || d < best.d) best = { id: wid, r, d };
+      });
+      if (!best) {
+        drop = null;
+        return setDrag({ id, indicator: null });
+      }
+      const { r } = best as { id: string; r: DOMRect; d: number };
+      const wide = r.width >= g.width * 0.9; // full-row widgets are dropped above/below, others left/right
+      const pos: "before" | "after" = wide ? (y < r.top + r.height / 2 ? "before" : "after") : x < r.left + r.width / 2 ? "before" : "after";
+      drop = { targetId: (best as { id: string }).id, pos };
+      const indicator = wide
+        ? { left: r.left - g.left, top: (pos === "before" ? r.top : r.bottom) - g.top - 1.5, width: r.width, height: 3 }
+        : { left: (pos === "before" ? r.left : r.right) - g.left - 1.5, top: r.top - g.top, width: 3, height: r.height };
+      setDrag({ id, indicator });
+    };
+    // Hold near the top/bottom edge of the scrolling area to scroll while dragging (keeps going while the pointer rests).
+    let pointer = { x: e.clientX, y: e.clientY };
+    let raf = 0;
+    const tick = () => {
+      if (scroller) {
+        const s = scroller.getBoundingClientRect();
+        const before = scroller.scrollTop;
+        if (pointer.y < s.top + 70) scroller.scrollTop -= 14;
+        else if (pointer.y > s.bottom - 70) scroller.scrollTop += 14;
+        if (scroller.scrollTop !== before) measure(pointer.x, pointer.y);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const onMove = (ev: PointerEvent) => {
+      pointer = { x: ev.clientX, y: ev.clientY };
+      measure(ev.clientX, ev.clientY);
+    };
+    const finish = (apply: boolean) => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+      setDrag(null);
+      if (apply && drop) {
+        moveTo(id, drop.targetId, drop.pos);
+        note(id);
+      }
+    };
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+    const onKey = (ev: KeyboardEvent) => ev.key === "Escape" && finish(false);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    measure(e.clientX, e.clientY);
+  };
+
+  // Saving a view-only preference (like the calendar's habits panel) outside Customize mode; the draft is untouched.
+  const viewPatch = (id: string, p: Partial<Widget>) => {
+    if (editing || !saved) return;
+    const next = { ...saved, widgets: saved.widgets.map((w) => (w.id === id ? ({ ...w, ...p } as Widget) : w)) };
+    if (!saveConfig(next)) toast("Couldn't save this preference in this browser.");
+    setSaved(next);
+  };
+
   const upd = (id: string, p: Partial<Widget>) => patch((c) => ({ ...c, widgets: c.widgets.map((w) => (w.id === id ? ({ ...w, ...p } as Widget) : w)) }));
   const add = (type: WidgetType) => {
     const existing = draft?.widgets.find((w) => w.type === type);
@@ -118,18 +216,19 @@ export function DashboardView({ data }: { data: DashData }) {
 
   return (
     <div className="min-h-full" style={a.background ? { backgroundColor: tint(a.background, "1f") } : undefined} data-dashboard data-editing={editing}>
-      <div className="mx-auto w-full max-w-5xl px-5 pb-20 pt-14 md:px-12 md:pt-16">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            {a.accent && <span className="h-6 w-1 rounded-full" style={{ backgroundColor: a.accent }} aria-hidden />}
-            <h2 className="text-2xl font-semibold text-neutral-100">Dashboard</h2>
-          </div>
-          {!editing && (
-            <button type="button" onClick={() => setDraft(structuredClone(saved!))} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200">
-              <SlidersHorizontal className="h-3.5 w-3.5" /> Customize Dashboard
-            </button>
-          )}
-        </div>
+      <div className="mx-auto w-full max-w-7xl px-5 pb-20 pt-14 md:px-10 md:pt-12">
+        <DashboardHeader
+          userId={data.userId}
+          notebooks={data.notebooks}
+          accent={a.accent}
+          trailing={
+            !editing && (
+              <button type="button" onClick={() => setDraft(structuredClone(saved!))} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200">
+                <SlidersHorizontal className="h-3.5 w-3.5" /> Customize Dashboard
+              </button>
+            )
+          }
+        />
 
         {editing && (
           <div role="region" aria-label="Customize Dashboard" className="sticky top-0 z-20 -mx-2 mt-4 space-y-3 rounded-xl border border-neutral-700 bg-neutral-950/95 p-3 backdrop-blur">
@@ -183,7 +282,15 @@ export function DashboardView({ data }: { data: DashData }) {
           </div>
         )}
 
-        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div ref={gridRef} data-widget-grid className={`relative mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6 ${drag ? "select-none" : ""}`}>
+          {drag?.indicator && (
+            <div
+              aria-hidden
+              data-drop-indicator
+              className="pointer-events-none absolute z-30 rounded-full bg-emerald-500"
+              style={{ left: drag.indicator.left, top: drag.indicator.top, width: drag.indicator.width, height: drag.indicator.height }}
+            />
+          )}
           {visible.length === 0 && (
             <p className="col-span-full rounded-xl border border-dashed border-neutral-700 p-6 text-center text-sm text-neutral-500">
               Your Dashboard is empty. {editing ? "Use Add widget to put something here." : "Choose Customize Dashboard to add widgets."}
@@ -191,6 +298,8 @@ export function DashboardView({ data }: { data: DashData }) {
           )}
           {visible.map((w, idx) => {
             const isHeading = w.type === "heading";
+            // Headings and the Notes Grid sit directly on the page; wrapping the cards in another card would be noise.
+            const bare = isHeading || w.type === "notes";
             const span = isHeading ? "sm:col-span-2 lg:col-span-6" : SPAN[w.size];
             const title = widgetTitle(w);
             const open = editing && openSettings === w.id;
@@ -205,12 +314,30 @@ export function DashboardView({ data }: { data: DashData }) {
                 data-widget-size={w.size}
                 data-widget-hidden={w.hidden ? "true" : undefined}
                 aria-label={isHeading ? undefined : title || CATALOG[w.type].label}
-                className={`${span} min-w-0 ${isHeading ? "" : `${cardBase} ${plainCard}`} ${editing ? "outline-dashed outline-1 outline-offset-2 outline-neutral-600" : ""} ${flash === w.id ? "ring-2 ring-neutral-300" : ""} ${w.hidden ? "opacity-50" : ""} ${w.type === "welcome" ? "relative overflow-hidden" : ""}`}
-                style={isHeading ? undefined : cardStyle}
+                className={`${span} min-w-0 ${bare ? (editing ? "p-2" : "") : `${cardBase} ${plainCard}`} ${editing ? "outline-dashed outline-1 outline-offset-2 outline-neutral-600" : ""} ${flash === w.id ? "ring-2 ring-neutral-300" : ""} ${w.hidden || drag?.id === w.id ? "opacity-50" : ""} ${w.type === "welcome" ? "relative overflow-hidden" : ""}`}
+                style={bare ? undefined : cardStyle}
               >
                 {editing && (
                   <div className="-mt-1 mb-2 flex flex-wrap items-center gap-1 border-b border-neutral-800 pb-2 text-xs text-neutral-400">
                     <span className="mr-auto flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        data-drag-handle={w.id}
+                        aria-label={`Reorder ${CATALOG[w.type].label} (drag, or arrow keys)`}
+                        title="Drag to reorder"
+                        onPointerDown={(e) => startDrag(e, w.id)}
+                        onKeyDown={(e) => {
+                          const dir = e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : 0;
+                          if (!dir) return;
+                          e.preventDefault();
+                          move(w.id, dir);
+                          requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-drag-handle="${w.id}"]`)?.focus());
+                        }}
+                        style={{ touchAction: "none" }}
+                        className="cursor-grab rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-400 active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </button>
                       <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-300">{idx + 1}</span>
                       {CATALOG[w.type].label}
                       {w.hidden && <span className="text-neutral-500">(hidden)</span>}
@@ -257,7 +384,7 @@ export function DashboardView({ data }: { data: DashData }) {
                           {title}
                         </h3>
                       )}
-                      <WidgetBody w={w} data={data} />
+                      <WidgetBody w={w} data={data} accent={a.accent} onPatch={(p) => viewPatch(w.id, p)} />
                     </>
                   )}
                 </div>

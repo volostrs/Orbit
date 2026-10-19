@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 
 // The left navigation. From `md` up it is the normal fixed-width column; on narrow screens it becomes a
 // drawer opened by a menu button, so the note keeps the full width. Choosing a note closes the drawer.
 export function NavShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+
+  // The Dashboard's search button asks for the sidebar search; on narrow screens that means opening the drawer.
+  useEffect(() => {
+    // Only the narrow-screen drawer needs opening; from md up the sidebar is always visible.
+    const show = () => window.matchMedia("(max-width: 767px)").matches && setOpen(true);
+    window.addEventListener("orbit:focus-search", show);
+    return () => window.removeEventListener("orbit:focus-search", show);
+  }, []);
 
   return (
     <>

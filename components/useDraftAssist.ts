@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { draftPrefs, draftStats, IDLE_MS, isMeaningfullyNew } from "@/lib/ai/draftAssist";
+import { draftPrefs, draftStats, hasTestMarker, IDLE_MS, isMeaningfullyNew } from "@/lib/ai/draftAssist";
 
 /**
  * Watches the open note and, after IDLE_MS without a meaningful edit, quietly asks the server whether the
@@ -18,6 +18,7 @@ export function useDraftAssist(noteId: string | undefined, initialContent: unkno
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const abort = useRef<AbortController | null>(null);
   const inflight = useRef<string | null>(null);
+  const testShown = useRef(new Set<string>()); // notes whose dev test marker already fired (until it is removed)
   const failed = useRef(new Set<string>()); // note+revision that errored: not retried until the content changes
 
   const onAcceptRef = useRef(onAccept);
@@ -83,7 +84,17 @@ export function useDraftAssist(noteId: string | undefined, initialContent: unkno
   /** Call on every editor change for `id`. Only a real content change (re)starts the inactivity timer. */
   const onContentEdited = useCallback(
     (id: string, content: unknown) => {
-      if (id !== activeId.current || draftPrefs.isDisabled()) return;
+      if (id !== activeId.current) return;
+      // Development-only test marker: show the notification immediately. No timer, no eligibility checks,
+      // no model call, and it overrides "don't show again". hasTestMarker is always false in production.
+      if (hasTestMarker(content)) {
+        if (!testShown.current.has(id)) {
+          testShown.current.add(id);
+          draftPrefs.setPending(id, "Test notification (development only).");
+          setPending({ reason: "Test notification (development only)." });
+        }
+      } else testShown.current.delete(id);
+      if (draftPrefs.isDisabled()) return;
       const revision = draftStats(content).revision;
       if (revision === lastRevision.current) return; // selection/format-only change: not an edit
       lastRevision.current = revision;

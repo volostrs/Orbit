@@ -26,6 +26,8 @@ interface Base {
 }
 export type Widget = Base &
   (
+    | { type: "notes" }
+    | { type: "calendar"; showHabits: boolean }
     | { type: "overview" }
     | { type: "recent"; count: number }
     | { type: "edited"; count: number }
@@ -57,6 +59,8 @@ export const STORAGE_KEY = "orbit.dashboard.v1";
 export const COUNT_CHOICES = [3, 5, 8];
 
 export const CATALOG: Record<WidgetType, { label: string; description: string; single: boolean; size: WidgetSize; group: "notes" | "personal" }> = {
+  notes: { label: "Notes Grid", description: "Your notes as cards, with favorite and notebook filters.", single: true, size: "wide", group: "notes" },
+  calendar: { label: "Calendar", description: "A month view for dates, deadlines and plans, with an optional habits panel.", single: true, size: "wide", group: "personal" },
   overview: { label: "Notes Overview", description: "Counts of your notes, notebooks and favorites.", single: true, size: "wide", group: "notes" },
   edited: { label: "Recently Edited", description: "Notes you changed most recently.", single: true, size: "standard", group: "notes" },
   recent: { label: "Recent Notes", description: "Notes you created most recently.", single: true, size: "standard", group: "notes" },
@@ -82,6 +86,8 @@ export function makeWidget(type: WidgetType): Widget {
       return { ...base, type, count: 5 };
     case "pinned":
       return { ...base, type, noteIds: [] };
+    case "calendar":
+      return { ...base, type, showHabits: false };
     case "welcome":
       return { ...base, type, title: "Welcome back", subtitle: "What's the plan for today?", image: emptyImage() };
     case "text":
@@ -101,7 +107,7 @@ export function defaultConfig(): DashboardConfig {
   const w = (type: WidgetType, patch: Partial<Base> = {}) => ({ ...makeWidget(type), ...patch }) as Widget;
   return {
     version: 1,
-    widgets: [w("overview"), w("edited"), w("favorites"), w("notebooks")],
+    widgets: [w("notes")],
     appearance: { accent: "", background: "", density: "comfortable", cardStyle: "plain" },
   };
 }
@@ -157,6 +163,9 @@ export function normalizeConfig(raw: unknown): DashboardConfig {
       case "favorites":
         widgets.push({ ...common, type, count });
         break;
+      case "calendar":
+        widgets.push({ ...common, type, showHabits: o.showHabits === true });
+        break;
       case "pinned":
         widgets.push({ ...common, type, noteIds: Array.isArray(o.noteIds) ? o.noteIds.filter((x): x is string => typeof x === "string").slice(0, 50) : [] });
         break;
@@ -188,6 +197,7 @@ export function normalizeConfig(raw: unknown): DashboardConfig {
         widgets.push({ ...common, type } as Widget);
     }
   }
+  if (!widgets.some((w) => w.type === "notes")) widgets.unshift({ id: newId(), size: "wide", type: "notes" });
   const a = r.appearance ?? {};
   return {
     version: 1,

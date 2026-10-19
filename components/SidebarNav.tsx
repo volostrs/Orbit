@@ -82,6 +82,17 @@ export function SidebarNav({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // The Dashboard's search button focuses this same search box (after the drawer has opened on narrow screens).
+  useEffect(() => {
+    const focus = () =>
+      setTimeout(() => {
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }, 50);
+    window.addEventListener("orbit:focus-search", focus);
+    return () => window.removeEventListener("orbit:focus-search", focus);
+  }, []);
+
   const noteHref = (id: string) => `/?noteId=${id}${isAiOpen ? "&aiOpen=true" : ""}`;
   const notebookName = useMemo(() => new Map(notebooks.map((nb) => [nb.id, nb.title])), [notebooks]);
 

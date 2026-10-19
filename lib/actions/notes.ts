@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { notes, users } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 async function ensureUserExists(userId: string) {
@@ -50,6 +50,7 @@ export async function updateNote(
   content?: Record<string, unknown> | unknown[],
   notebookId?: string | null
 ) {
+  // A locked note rejects content writes (returns undefined), so a stale editor can't overwrite it.
   const [updated] = await db
     .update(notes)
     .set({
@@ -58,7 +59,7 @@ export async function updateNote(
       notebookId,
       updatedAt: new Date(),
     })
-    .where(eq(notes.id, id))
+    .where(content === undefined ? eq(notes.id, id) : and(eq(notes.id, id), eq(notes.isLocked, false)))
     .returning();
 
   revalidatePath("/");
@@ -71,6 +72,12 @@ export async function toggleFavoriteNote(id: string, currentFavoriteStatus: bool
     .set({ isFavorite: !currentFavoriteStatus, updatedAt: new Date() })
     .where(eq(notes.id, id));
 
+  revalidatePath("/");
+}
+
+// Locking only flips the flag; it does not change updatedAt, since the content didn't change.
+export async function setNoteLocked(id: string, locked: boolean) {
+  await db.update(notes).set({ isLocked: locked }).where(eq(notes.id, id));
   revalidatePath("/");
 }
 
@@ -98,7 +105,9 @@ export async function duplicateNote(id: string) {
   const [duplicated] = await db
     .insert(notes)
     .values({
-      title: `${originalNote.title} (Copy)`,
+      title: `Copy of ${originalNote.title}`,
+      icon: originalNote.icon,
+      iconColor: originalNote.iconColor,
       content: originalNote.content,
       userId: originalNote.userId,
       notebookId: originalNote.notebookId,

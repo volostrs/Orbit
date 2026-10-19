@@ -38,13 +38,14 @@ const schema = BlockNoteSchema.create({
 });
 
 interface BlockEditorProps {
+  editable?: boolean;
   initialContent?: any[];
   onChange: (content: any[]) => void;
   // Hands the live editor to the parent (and null on unmount), e.g. so AI proposals can be applied.
   onEditorReady?: (editor: BlockNoteEditor<any, any, any> | null) => void;
 }
 
-export default function BlockEditor({ initialContent, onChange, onEditorReady }: BlockEditorProps) {
+export default function BlockEditor({ editable = true, initialContent, onChange, onEditorReady }: BlockEditorProps) {
   const { resolvedTheme } = useTheme();
   const editor = useCreateBlockNote({
     schema,
@@ -56,9 +57,17 @@ export default function BlockEditor({ initialContent, onChange, onEditorReady }:
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
-    if (editor.prosemirrorView) cleanup = moveCustomBlocksOnDrop(editor);
-    else editor.onMount(() => (cleanup = moveCustomBlocksOnDrop(editor)));
-    return () => cleanup?.();
+    let disposed = false;
+    // A mount callback firing after cleanup must not leave a listener behind; leaked listeners would each act on drop.
+    const register = () => {
+      if (!disposed && !cleanup) cleanup = moveCustomBlocksOnDrop(editor);
+    };
+    if (editor.prosemirrorView) register();
+    else editor.onMount(register);
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
   }, [editor]);
 
   useEffect(() => {
@@ -71,6 +80,7 @@ export default function BlockEditor({ initialContent, onChange, onEditorReady }:
     <div className="w-full">
       <BlockNoteView
         editor={editor}
+        editable={editable}
         theme={resolvedTheme === "light" ? "light" : "dark"}
         slashMenu={false}
         onChange={() => {

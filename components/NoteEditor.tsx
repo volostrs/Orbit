@@ -6,9 +6,11 @@ import type { Note, Notebook } from "@/lib/db/schema";
 import type { BlockNoteEditor } from "@blocknote/core";
 import { IconPicker } from "./IconPicker";
 import { FloatingPopover } from "@/components/ui/floating-popover";
+import { useToast } from "@/components/ui/toast";
 import { ColorSwatches } from "./blocks/blockStyle";
 import type { NoteAppearance } from "./useNoteAppearance";
 import { Palette } from "lucide-react";
+import { NoteHeaderActions } from "./NoteHeaderActions";
 import dynamic from "next/dynamic";
 
 const Editor = dynamic(() => import("./BlockEditor"), {
@@ -51,19 +53,30 @@ export function NoteEditor({
   // Latest editor content, so title edits don't re-save the content the note was opened with.
   const latestContent = useRef<unknown>(note.content);
 
+  const toast = useToast();
+  const locked = note.isLocked;
+
   const handleContentChange = (newContent: any[]) => {
+    if (locked) return; // programmatic changes (e.g. an accepted AI proposal) must not slip past the lock
     latestContent.current = newContent;
     onContentEdited?.(note.id, newContent);
     startTransition(async () => {
-      await updateNote(
-        note.id,
-        undefined,
-        newContent as unknown as Record<string, unknown>
-      );
+      try {
+        const saved = await updateNote(
+          note.id,
+          undefined,
+          newContent as unknown as Record<string, unknown>
+        );
+        if (!saved) toast("This change wasn't saved because the note is locked.");
+      } catch (err) {
+        console.error("Could not save note", err);
+        toast("Couldn't save your last change. Check your connection.");
+      }
     });
   };
 
   const handleTitleChange = (newTitle: string) => {
+    if (locked) return;
     setTitle(newTitle);
     sentTitles.current.add(newTitle);
     startTransition(async () => {
@@ -101,6 +114,14 @@ export function NoteEditor({
           <span role="status" className="text-xs text-neutral-500">
             {isPending ? "Saving…" : ""}
           </span>
+          <NoteHeaderActions
+            note={note}
+            title={title}
+            notebooks={notebooks}
+            appearance={appearance}
+            onAppearanceChange={onAppearanceChange}
+            getContent={() => latestContent.current}
+          />
           <FloatingPopover
             triggerLabel="Page settings"
             align="end"
@@ -112,25 +133,6 @@ export function NoteEditor({
             }
             className="w-60 space-y-3 p-3"
           >
-            <div>
-              <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">Width</div>
-              <div role="radiogroup" aria-label="Page width" className="flex rounded-md border border-neutral-800 p-0.5">
-                {(["standard", "wide"] as const).map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    role="radio"
-                    aria-checked={appearance.width === w}
-                    onClick={() => onAppearanceChange({ width: w })}
-                    className={`h-6 flex-1 rounded capitalize transition-colors ${
-                      appearance.width === w ? "bg-neutral-800 text-neutral-100" : "text-neutral-500 hover:text-neutral-200"
-                    }`}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-            </div>
             <div>
               <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">Accent</div>
               <ColorSwatches value={appearance.accent} onChange={(hex) => onAppearanceChange({ accent: hex })} label="Accent" />
@@ -147,12 +149,16 @@ export function NoteEditor({
         className="mb-6 w-full border-none bg-transparent text-3xl font-bold tracking-tight text-neutral-100 outline-none placeholder:text-neutral-600 md:text-4xl"
         placeholder="Untitled"
         value={title}
+        readOnly={locked}
         onChange={(e) => handleTitleChange(e.target.value)}
       />
 
       {/* Editor */}
+      {/* Remounted when the lock changes so every block (including custom ones) picks up the new editable state. */}
       <Editor
-        initialContent={parsedContent}
+        key={locked ? "locked" : "open"}
+        editable={!locked}
+        initialContent={Array.isArray(latestContent.current) ? latestContent.current : parsedContent}
         onChange={handleContentChange}
         onEditorReady={(editor) => onEditorReady?.(note.id, editor)}
       />

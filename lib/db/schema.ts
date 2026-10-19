@@ -39,6 +39,8 @@ export const notes = pgTable("notes", {
   iconColor: text("icon_color").default("#ffffff"), 
   content: jsonb("content").$type<any[]>().default([]),
   isFavorite: boolean("is_favorite").default(false).notNull(),
+  // A locked note rejects content edits until it is unlocked (see lib/db/note-lock.sql).
+  isLocked: boolean("is_locked").default(false).notNull(),
   notebookId: uuid("notebook_id").references(() => notebooks.id, {
     onDelete: "cascade",
   }),

@@ -15,7 +15,15 @@ const MOVABLE = new Set(["dataTable", "habitTracker", "chart", "calendar", "cloc
  *     the original stays where it was.
  *  4. Any follow-up drop event from the same gesture is swallowed, so nothing else can add a copy.
  *
- * Drops of anything else fall through to the default handling. Returns a cleanup function.
+ * Drops of anything else fall through to the default handling.
+ *
+ * Safety net: a drag must never increase the number of identical custom blocks. At dragstart we snapshot every
+ * custom block (id + type/props signature). A first check runs synchronously at the end of the drop event, after
+ * ProseMirror's own handler and before the browser can paint, and a final one shortly after the drop. If any
+ * signature has more blocks than before, the surplus is removed, preferring the originals left behind so the
+ * copy at the destination remains. This holds whichever path inserted the copy.
+ *
+ * Returns a cleanup function.
  */
 export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
   const view = editor.prosemirrorView;
@@ -23,9 +31,58 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
 
   let sourceId: string | null = null;
   let handledAt = 0;
+  let snapshot: Map<string, string[]> | null = null; // signature -> ids present at dragstart
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Custom blocks (at any depth) as {id, signature} pairs.
+  const customBlocks = () => {
+    const found: { id: string; sig: string }[] = [];
+    const walk = (blocks: any[]) => {
+      for (const b of blocks) {
+        if (MOVABLE.has(b.type)) found.push({ id: b.id, sig: b.type + JSON.stringify(b.props) });
+        walk(b.children ?? []);
+      }
+    };
+    walk(editor.document);
+    return found;
+  };
+
+  const takeSnapshot = () => {
+    snapshot = new Map();
+    for (const { id, sig } of customBlocks()) snapshot.set(sig, [...(snapshot.get(sig) ?? []), id]);
+  };
+
+  // A non-final pass keeps the snapshot so the final pass can still catch anything inserted later.
+  const settle = (final = true) => {
+    const before = snapshot;
+    if (final) snapshot = null;
+    if (!before || view.isDestroyed) return;
+    const now = new Map<string, string[]>();
+    for (const { id, sig } of customBlocks()) now.set(sig, [...(now.get(sig) ?? []), id]);
+    const surplus: string[] = [];
+    for (const [sig, ids] of now) {
+      const beforeIds = before.get(sig) ?? [];
+      const extra = ids.length - beforeIds.length;
+      // Originals left behind go first; if none remain, drop the later-added copies instead.
+      if (extra > 0)
+        surplus.push(...[...ids.filter((id) => beforeIds.includes(id)), ...ids.filter((id) => !beforeIds.includes(id)).reverse()].slice(0, extra));
+    }
+    if (surplus.length === 0) return;
+    try {
+      editor.transact(() => editor.removeBlocks(surplus));
+    } catch (err) {
+      console.error("Could not remove the duplicate left by a block move.", err);
+    }
+  };
+
+  const settleSoon = () => {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => settle(), 150);
+  };
 
   const onDragStart = (event: DragEvent) => {
     sourceId = null;
+    takeSnapshot();
     const html = event.dataTransfer?.getData("blocknote/html");
     if (!html) return;
     // Exactly one block in the payload, and it is a custom block we know how to move.
@@ -36,6 +93,9 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
   };
 
   const onDrop = (event: DragEvent) => {
+    // A torn-down editor (e.g. after switching notes) must neither act on nor swallow the drop.
+    if (view.isDestroyed) return;
+
     // A second drop from the same gesture (synthetic re-dispatch, etc.) must not insert another copy.
     if (!sourceId) {
       if (Date.now() - handledAt < 500) {
@@ -46,18 +106,13 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
     }
 
     const id = sourceId;
-    sourceId = null;
-    handledAt = Date.now();
-    // We own this drop; nothing else may insert or delete for it.
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    view.dragging = null;
-
     const source = editor.getBlock(id);
     const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
-    if (!source || source.children.length > 0 || !hit) return; // keep the original in place
 
-    // Find the block under the pointer; drop before/after it depending on which half is hovered.
+    // Validate source block and hit position prior to intercepting event
+    if (!source || source.children.length > 0 || !hit) return;
+
+    // Find the block under the pointer
     const $pos = view.state.doc.resolve(hit.inside >= 0 ? hit.inside : hit.pos);
     let destId: string | undefined;
     let destRect: DOMRect | undefined;
@@ -70,7 +125,18 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
         break;
       }
     }
+
+    // Do not intervene if destination is missing or the block is dropped onto itself
     if (!destId || destId === id) return;
+
+    // Valid custom drop target confirmed — take ownership of event
+    sourceId = null;
+    handledAt = Date.now();
+    settleSoon();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    view.dragging = null;
+
     const placement = destRect && event.clientY < destRect.top + destRect.height / 2 ? "before" : "after";
 
     try {
@@ -86,10 +152,15 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
     } catch (err) {
       console.error("Block move failed; original block left in place.", err);
     }
+    settle(false);
   };
+
+  // Reached only for drops we did not take over (ProseMirror's own handler has already run by now).
+  const onDropHandledNatively = () => settle(false);
 
   const onDragEnd = () => {
     sourceId = null;
+    settleSoon();
   };
 
   // dragstart: bubble phase, so BlockNote's side-menu handler has already filled the drag payload.
@@ -97,9 +168,12 @@ export function moveCustomBlocksOnDrop(editor: BlockNoteEditor<any, any, any>) {
   document.addEventListener("dragstart", onDragStart);
   document.addEventListener("drop", onDrop, true);
   document.addEventListener("dragend", onDragEnd);
+  window.addEventListener("drop", onDropHandledNatively);
   return () => {
     document.removeEventListener("dragstart", onDragStart);
     document.removeEventListener("drop", onDrop, true);
     document.removeEventListener("dragend", onDragEnd);
+    window.removeEventListener("drop", onDropHandledNatively);
+    clearTimeout(settleTimer);
   };
 }

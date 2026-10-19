@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
 import { ChevronLeft, ChevronRight, Plus, Settings2, Trash2 } from "lucide-react";
+import { IconPicker } from "../IconPicker";
+import { DynamicIcon } from "../DynamicIcon";
 import { BlockShell, ColorSwatches, frameStyle, StyleMenu, tint } from "./blockStyle";
 
 type Mode = "days" | "target";
@@ -15,6 +17,9 @@ interface Habit {
   days?: number[]; // weekday indexes, 0 = Monday ... 6 = Sunday
   target?: number; // completions per week for "target" mode
   color?: string;
+  // Optional per-habit icon (a lucide name from the shared IconPicker) and its color; absent on older habits.
+  icon?: string;
+  iconColor?: string;
 }
 
 interface HabitData {
@@ -210,10 +215,43 @@ function HabitTracker({
               const p = progress[hi];
               return [
                 <tr key={habit.id} className="group">
-                  <td className="sticky left-0 z-10 border-b border-neutral-800 bg-neutral-900 align-middle">
+                  <td
+                    className="sticky left-0 z-10 border-b border-neutral-800 bg-neutral-900 align-middle"
+                    // Layered over the opaque base so the sticky cell stays solid while showing the habit's color.
+                    style={{ backgroundImage: `linear-gradient(${tint(hc, "33")}, ${tint(hc, "33")})` }}
+                  >
+                    <div className="flex items-start">
+                    {/* Habits without an icon take no space unless editable, where a faint add-icon button shows on hover. */}
+                    {habit.icon ? (
+                      editable ? (
+                        <div className="shrink-0 pl-1 pt-0.5">
+                          <IconPicker
+                            compact
+                            label={`Icon for ${habit.name}`}
+                            currentIcon={habit.icon}
+                            currentColor={habit.iconColor}
+                            onSelectIcon={(icon, iconColor) => updateHabit(habit.id, { icon, iconColor })}
+                            onRemoveIcon={() => updateHabit(habit.id, { icon: undefined, iconColor: undefined })}
+                          />
+                        </div>
+                      ) : (
+                        <DynamicIcon name={habit.icon} color={habit.iconColor} className="ml-2 mt-2 h-4 w-4 shrink-0" aria-hidden />
+                      )
+                    ) : (
+                      editable && (
+                        <div className="shrink-0 pl-1 pt-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                          <IconPicker
+                            compact
+                            label={`Add icon for ${habit.name}`}
+                            onSelectIcon={(icon, iconColor) => updateHabit(habit.id, { icon, iconColor })}
+                            onRemoveIcon={() => {}}
+                          />
+                        </div>
+                      )
+                    )}
                     <textarea
                       rows={1}
-                      className="field-sizing-content block w-full resize-none break-words bg-transparent px-2 pt-1.5 text-sm leading-snug outline-none focus:bg-neutral-800/60"
+                      className="field-sizing-content block min-w-0 flex-1 resize-none break-words bg-transparent px-2 pt-1.5 text-sm leading-snug outline-none focus:bg-neutral-800/60"
                       readOnly={!editable}
                       aria-label="Habit name"
                       key={habit.name}
@@ -230,8 +268,9 @@ function HabitTracker({
                         }
                       }}
                     />
+                    </div>
                     <div
-                      className="px-2 pb-1 text-[11px] text-neutral-500"
+                      className={`pb-1 text-[11px] text-neutral-500 ${habit.icon ? "pl-8 pr-2" : "px-2"}`}
                       aria-label={`${habit.name} progress`}
                     >
                       {p.done}/{p.total} · {mode === "target" ? `${target}×/week` : sched.length === 0 ? "no days" : "scheduled"}
@@ -245,7 +284,7 @@ function HabitTracker({
                         className={`border-b border-neutral-800 text-center align-middle ${
                           mode === "days" && !scheduled ? "opacity-40" : ""
                         } ${key === todayKey && !scheduled ? "bg-purple-500/10" : ""}`}
-                        style={scheduled ? { backgroundColor: tint(hc, "26") } : undefined}
+                        style={{ backgroundColor: tint(hc, scheduled ? "33" : "14") }}
                         data-scheduled={scheduled ? "true" : "false"}
                       >
                         <input

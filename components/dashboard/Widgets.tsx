@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
-import { DynamicIcon } from "@/components/DynamicIcon";
+import { DynamicIcon } from "@/components/ui/DynamicIcon";
 import type { CalendarEvent, Note, Notebook } from "@/lib/db/schema";
 import type { DashHabit } from "@/lib/notes/habits";
 import { COUNT_CHOICES, type LinkItem, newId, safeUrl, type Widget } from "@/lib/dashboard/config";

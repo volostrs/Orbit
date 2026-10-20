@@ -9,7 +9,7 @@ import {
   updateNote,
 } from "@/lib/actions/notes";
 import type { Notebook } from "@/lib/db/schema";
-import type { NoteSummary } from "@/components/SidebarNav";
+import type { NoteSummary } from "@/components/layout/SidebarNav";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Folder, MoreHorizontal, Copy, Pencil, Star, Trash2 } from "lucide-react";
 import { FloatingPopover } from "@/components/ui/floating-popover";

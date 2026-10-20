@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from "@/lib/actions/calendar";
 import type { CalendarEvent } from "@/lib/db/schema";
-import type { DashHabit } from "@/lib/notes/habits";
+import { habitsOnDate, type DashHabit } from "@/lib/notes/habits";
 import { HabitPanel } from "@/components/dashboard/CalendarWidget";
 
 type View = "month" | "week" | "agenda";
@@ -46,6 +47,9 @@ const fmtTime = (t: string) => {
 const timeLabel = (e: CalendarEvent) => (e.allDay || !e.startTime ? "All day" : e.endTime ? `${fmtTime(e.startTime)} – ${fmtTime(e.endTime)}` : fmtTime(e.startTime));
 const byTime = (a: CalendarEvent, b: CalendarEvent) =>
   Number(!!b.allDay) - Number(!!a.allDay) || (a.startTime ?? "").localeCompare(b.startTime ?? "") || +new Date(a.createdAt) - +new Date(b.createdAt);
+
+// Hex habit colors with an alpha suffix (e.g. "33"); anything else is left to the browser as-is.
+const withAlpha = (c: string, a: string) => (/^#[0-9a-f]{6}$/i.test(c) ? c + a : c);
 
 const btn = "inline-flex items-center gap-1.5 rounded-md border border-neutral-700 px-2.5 py-1.5 text-xs text-neutral-200 transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-400 disabled:opacity-40";
 const iconBtn = "rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-400";
@@ -214,6 +218,35 @@ function CalendarPage({ userId, events: serverEvents, habits }: { userId: string
     </ul>
   );
 
+  // Scheduled habits for a date, derived from the notes' Habit Tracker data (nothing is stored per occurrence).
+  // Solid line = done, hollow line = not done yet; each links to the note that owns the habit.
+  const habitLines = (k: string, d: Date, max: number) => {
+    const occ = habitsOnDate(habits, k, dayIndex(d));
+    if (occ.length === 0) return null;
+    return (
+      <ul aria-label="Habits" data-habit-lines className="relative z-10 mt-0.5 flex flex-wrap items-center gap-x-0.5">
+        {occ.slice(0, max).map(({ habit, done }) => (
+          <li key={habit.noteId + habit.id}>
+            <Link
+              href={`/?noteId=${habit.noteId}`}
+              title={`${habit.name} · ${done ? "done" : "not done"} · ${habit.noteTitle || "Untitled"}`}
+              aria-label={`${habit.name}, ${done ? "done" : "not done"}, in ${habit.noteTitle || "Untitled"}`}
+              data-habit-line={habit.id}
+              data-done={done ? "true" : "false"}
+              className="block rounded-full py-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-400"
+            >
+              <span
+                className="block h-1.5 w-3 rounded-full border sm:w-5"
+                style={{ borderColor: habit.color, backgroundColor: done ? habit.color : "transparent" }}
+              />
+            </Link>
+          </li>
+        ))}
+        {occ.length > max && <li className="pl-0.5 text-[10px] leading-none text-neutral-500">+{occ.length - max}</li>}
+      </ul>
+    );
+  };
+
   const month = (
     <div data-cal-view="month">
       <div className="grid grid-cols-7 text-center text-[11px] font-medium uppercase tracking-wide text-neutral-500" aria-hidden>
@@ -251,6 +284,7 @@ function CalendarPage({ userId, events: serverEvents, habits }: { userId: string
               >
                 {d.getDate()}
               </span>
+              {habitLines(k, d, 4)}
               {dayEvents(evs, 3)}
               {evs.length > 0 && (
                 <div className="pointer-events-none relative mt-0.5 flex justify-center gap-0.5 sm:hidden" aria-hidden>
@@ -296,6 +330,31 @@ function CalendarPage({ userId, events: serverEvents, habits }: { userId: string
                 {d.getDate()}
               </span>
             </button>
+            {(() => {
+              const occ = habitsOnDate(habits, k, dayIndex(d));
+              if (occ.length === 0) return null;
+              return (
+                <ul aria-label="Habits" data-habit-lines className="mt-2 space-y-0.5">
+                  {occ.slice(0, 5).map(({ habit, done }) => (
+                    <li key={habit.noteId + habit.id}>
+                      <Link
+                        href={`/?noteId=${habit.noteId}`}
+                        title={`${habit.name} · ${done ? "done" : "not done"} · ${habit.noteTitle || "Untitled"}`}
+                        data-habit-line={habit.id}
+                        data-done={done ? "true" : "false"}
+                        className="flex min-w-0 items-center gap-1 rounded-sm px-1 py-0.5 text-[11px] text-neutral-200 hover:brightness-125 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-400"
+                        style={{ borderLeft: `2px solid ${habit.color}`, backgroundColor: withAlpha(habit.color, done ? "33" : "14") }}
+                      >
+                        {done ? <Check className="h-3 w-3 shrink-0" aria-hidden /> : <span className="h-3 w-3 shrink-0 rounded-full border border-neutral-500" aria-hidden />}
+                        <span className={`min-w-0 truncate ${done ? "text-neutral-400 line-through" : ""}`}>{habit.name}</span>
+                        <span className="sr-only">{done ? "done" : "not done"}</span>
+                      </Link>
+                    </li>
+                  ))}
+                  {occ.length > 5 && <li className="px-1 text-[10px] text-neutral-500">+{occ.length - 5} more</li>}
+                </ul>
+              );
+            })()}
             {evs.length === 0 ? (
               <p className="mt-2 text-[11px] text-neutral-600">No events</p>
             ) : (

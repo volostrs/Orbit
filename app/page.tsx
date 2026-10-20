@@ -1,15 +1,15 @@
 import { getNotes } from "@/lib/actions/notes";
 import { getNotebooks } from "@/lib/actions/notebooks";
 import { ToastProvider } from "@/components/ui/toast";
-import { SidebarNav } from "@/components/SidebarNav";
+import { SidebarNav } from "@/components/layout/SidebarNav";
 import { DashboardView } from "@/components/dashboard/DashboardView";
 import { notePreview } from "@/lib/notes/text";
 import { extractHabits } from "@/lib/notes/habits";
 import { listCalendarEvents } from "@/lib/actions/calendar";
-import { NavShell } from "@/components/NavShell";
-import { ThemeSwitch } from "@/components/ThemeSwitch";
-import { NoteWorkspace } from "@/components/NoteWorkspace";
-import { AiChatsView } from "@/components/AiChatsView";
+import { NavShell } from "@/components/layout/NavShell";
+import { ThemeSwitch } from "@/components/layout/ThemeSwitch";
+import { NoteWorkspace } from "@/components/notes/NoteWorkspace";
+import { AiChatsView } from "@/components/ai/AiChatsView";
 import { listChatsForUser, listMessages, MAX_CONVERSATIONS_PER_NOTE, type ChatSummary, type StoredMessage } from "@/lib/ai/conversations";
 import { CalendarView } from "@/components/calendar/CalendarView";
 

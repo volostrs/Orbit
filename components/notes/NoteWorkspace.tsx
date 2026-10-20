@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { BlockNoteEditor } from "@blocknote/core";
-import { NoteEditor } from "@/components/NoteEditor";
-import { AiSidebar } from "@/components/AiSidebar";
-import { AiFloatingButton } from "@/components/AiFloatingButton";
-import { DraftAssistNotification } from "@/components/DraftAssistNotification";
-import { useDraftAssist } from "@/components/useDraftAssist";
-import { useNoteAppearance } from "@/components/useNoteAppearance";
+import { NoteEditor } from "@/components/notes/NoteEditor";
+import { AiSidebar } from "@/components/ai/AiSidebar";
+import { AiFloatingButton } from "@/components/ai/AiFloatingButton";
+import { DraftAssistNotification } from "@/components/ai/DraftAssistNotification";
+import { useDraftAssist } from "@/components/ai/useDraftAssist";
+import { useNoteAppearance } from "@/components/notes/useNoteAppearance";
 import { IMPROVE_PROMPT } from "@/lib/ai/draftAssist";
 
 // `hidden` (Dashboard/Calendar showing) only hides the workspace with CSS: the editor, its unsaved state, the AI

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Dialog } from "@base-ui/react/dialog";
 import { CalendarDays, ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
+import { DynamicIcon } from "@/components/ui/DynamicIcon";
 import { useToast } from "@/components/ui/toast";
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from "@/lib/actions/calendar";
 import type { CalendarEvent } from "@/lib/db/schema";
@@ -297,7 +298,11 @@ export function HabitPanel({ habits, date }: { habits: DashHabit[]; date: Date }
                   .sort((a, b) => Number(b.scheduled) - Number(a.scheduled))
                   .map(({ h, scheduled, done, progress, total }) => (
                     <li key={h.id} data-habit={h.id} className="flex min-w-0 items-center gap-2 text-sm">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: h.color }} aria-hidden />
+                      {h.icon ? (
+                        <DynamicIcon name={h.icon} color={h.iconColor} className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      ) : (
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: h.color }} aria-hidden />
+                      )}
                       <span className="min-w-0 flex-1 truncate text-neutral-200">{h.name}</span>
                       <span className="hidden shrink-0 text-[11px] text-neutral-500 sm:inline">
                         {h.mode === "target" ? `${h.target}× a week` : h.days.length === 7 ? "Daily" : h.days.map((i) => WEEKDAYS[i]).join(" ")}

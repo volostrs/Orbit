@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { ChevronRight, MessageSquare, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
-import type { NoteSummary } from "@/components/SidebarNav";
+import type { NoteSummary } from "@/components/layout/SidebarNav";
 import type { ChatSummary } from "@/lib/ai/conversations";
 import { deleteConversation, renameConversation } from "@/lib/actions/conversations";
-import { DynamicIcon } from "@/components/DynamicIcon";
+import { DynamicIcon } from "@/components/ui/DynamicIcon";
 import { FloatingPopover } from "@/components/ui/floating-popover";
 import { useToast } from "@/components/ui/toast";
 

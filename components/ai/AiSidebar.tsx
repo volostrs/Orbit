@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import type { BlockNoteEditor } from "@blocknote/core";
 import { applyProposal } from "@/lib/ai/applyProposal";
 import { PROPOSAL_MARKER, type Proposal } from "@/lib/ai/proposal";
-import { AiMarkdown } from "@/components/AiMarkdown";
+import { AiMarkdown } from "@/components/ai/AiMarkdown";
 import { FloatingPopover } from "@/components/ui/floating-popover";
 import { saveConversationNotice } from "@/lib/actions/conversations";
 

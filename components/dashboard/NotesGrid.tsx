@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Copy, Download, Folder, Star, Trash2 } from "lucide-react";
-import { DynamicIcon } from "@/components/DynamicIcon";
+import { DynamicIcon } from "@/components/ui/DynamicIcon";
 import { useToast } from "@/components/ui/toast";
 import { deleteNote, duplicateNote, toggleFavoriteNote } from "@/lib/actions/notes";
 import { exportNoteMarkdown } from "@/lib/actions/export";

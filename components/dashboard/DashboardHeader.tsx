@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Pencil, Plus, Search } from "lucide-react";
-import { NewNoteDialog, NewNotebookDialog } from "@/components/CreateDialogs";
+import { NewNoteDialog, NewNotebookDialog } from "@/components/notes/CreateDialogs";
 import type { Notebook } from "@/lib/db/schema";
 
 const NAME_KEY = "orbit:display-name";

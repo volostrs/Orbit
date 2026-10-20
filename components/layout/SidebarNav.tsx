@@ -19,9 +19,9 @@ import {
 } from "lucide-react";
 import type { Note, Notebook } from "@/lib/db/schema";
 import { deleteNotebook, renameNotebook } from "@/lib/actions/notebooks";
-import { DynamicIcon } from "@/components/DynamicIcon";
-import { NewNoteDialog, NewNotebookDialog } from "@/components/CreateDialogs";
-import { NoteActionMenu } from "@/components/NoteActionMenu";
+import { DynamicIcon } from "@/components/ui/DynamicIcon";
+import { NewNoteDialog, NewNotebookDialog } from "@/components/notes/CreateDialogs";
+import { NoteActionMenu } from "@/components/notes/NoteActionMenu";
 import { FloatingPopover } from "@/components/ui/floating-popover";
 
 export type NoteSummary = Omit<Note, "content">;

@@ -27,6 +27,8 @@ export interface ProposalPreviewItem {
 export interface Proposal {
   id: string;
   noteId: string;
+  // The chat this proposal came from; a proposal is only ever shown in, and applied from, that conversation.
+  conversationId?: string;
   ops: ProposalOp[];
   preview: ProposalPreviewItem[];
 }
@@ -112,6 +114,11 @@ function convertTable(model: any, existing: any) {
       const opts = Array.isArray(c.options) ? c.options : [];
       if (opts.length > 50 || opts.some((o: unknown) => typeof o !== "string" || !o.trim())) fail(`column "${name}" has invalid options`);
       col.options = [...new Set(opts.map((o: string) => o.trim()))];
+      // Keep the user's option colors across an AI update (matched by option name).
+      if (isObj(match?.optionColors)) {
+        const kept = Object.fromEntries(Object.entries(match.optionColors).filter(([k]) => (col.options as string[]).includes(k)));
+        if (Object.keys(kept).length) col.optionColors = kept;
+      }
     }
     return col as { id: string; name: string; type: string; options?: string[] };
   });

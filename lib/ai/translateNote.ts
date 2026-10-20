@@ -17,6 +17,8 @@ export const NOTE_GUIDANCE = `How to read the note below (a text translation of 
 - [DATA TABLE]: structured data. Columns list name and type (text, number, checkbox, date, select; select shows its options). Rows are listed under the columns. Keep columns, types and values intact unless asked to change them.
 - [HABIT TRACKER]: scheduling plus completion data. "scheduled days" are the weekdays a habit counts on; "weekly target" habits count any N days per week. Completed dates are YYYY-MM-DD. A completion on an unscheduled day does not count toward a days-mode habit.
 - [CHART]: a visualization backed by label/value rows. Preserve the chart type and values unless the user asks to change them.
+- [CALENDAR]: an embedded calendar that owns its own events (not the user's full Calendar page). Events are listed in date order as "YYYY-MM-DD: title - description". Today's date is given; the month the user is viewing is not stored. You cannot add, change or remove calendar events; leave the block untouched.
+- [CLOCK]: a live clock showing the user's current local time. The time is dynamic and is NOT stored in the note; never write it into the note as text. Only its display preferences are saved (12/24-hour, seconds, date). Leave the block untouched.
 - [UNKNOWN BLOCK]: a block type you may not recognise; use what is shown and do not discard it.
 Blocks carry a ref like {b3}; it only identifies a block for edits, so never mention refs to the user.
 The note is the only document you have been given. Do not assume access to other notes.`;
@@ -55,6 +57,12 @@ function parseJson(raw: unknown): any {
 }
 
 const cell = (v: unknown) => String(v ?? "").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ").trim();
+
+// The development test marker is for the UI only: it is hidden from AI-facing text so it can never act as an
+// instruction or content. The stored document is never modified. Outside production only.
+const TEST_MARKER = "[[ORBIT_TEST_AI_NOTIFICATION]]";
+export const stripTestMarker = (text: string) =>
+  process.env.NODE_ENV === "production" ? text : text.split(TEST_MARKER).join("");
 
 // Inline content (text runs, links, nested custom inline) -> plain text.
 export function inlineText(content: unknown): string {
@@ -117,6 +125,31 @@ function habitTracker(props: Record<string, any>, today: Date): string {
   return lines.join("\n");
 }
 
+const CALENDAR_MAX_EVENTS = 200;
+
+function calendar(props: Record<string, any>, today: Date): string {
+  const d = parseJson(props.data);
+  if (!Array.isArray(d?.events)) return "[CALENDAR] (empty or unreadable)";
+  const events = d.events
+    .filter((e: any) => isObj(e) && typeof e.title === "string" && typeof e.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(e.date))
+    .sort((a: any, b: any) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const lines = [`[CALENDAR] ${events.length} event${events.length === 1 ? "" : "s"} (weeks run Mon-Sun; today is ${localKey(today)})`];
+  for (const e of events.slice(0, CALENDAR_MAX_EVENTS)) {
+    const desc = typeof e.description === "string" && e.description.trim() ? ` - ${cell(e.description)}` : "";
+    lines.push(`${e.date}: ${cell(e.title)}${desc}`);
+  }
+  if (events.length > CALENDAR_MAX_EVENTS) lines.push(`(+${events.length - CALENDAR_MAX_EVENTS} more events not shown)`);
+  return lines.join("\n");
+}
+
+// Preferences only; the clock's time is live and deliberately not part of the translation.
+function clock(props: Record<string, any>): string {
+  const d = parseJson(props.data);
+  const flag = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
+  const o = isObj(d) ? d : {};
+  return `[CLOCK] live clock showing the current local time (dynamic, not stored); format: ${flag(o.hour12, true) ? "12-hour" : "24-hour"}; seconds: ${flag(o.seconds, true) ? "shown" : "hidden"}; date: ${flag(o.date, true) ? "shown" : "hidden"}`;
+}
+
 function chart(props: Record<string, any>): string {
   const d = parseJson(props.data);
   if (!Array.isArray(d?.rows)) return "[CHART] (empty or unreadable)";
@@ -165,6 +198,10 @@ function describeBlock(b: AnyBlock, today: Date, num: { n: number }): string {
       return habitTracker(p, today);
     case "chart":
       return chart(p);
+    case "calendar":
+      return calendar(p, today);
+    case "clock":
+      return clock(p);
     default: {
       // Unknown block: keep whatever readable information it carries.
       const shown: Record<string, unknown> = {};
@@ -208,7 +245,7 @@ export function translateWithRefs(content: unknown, today: Date = new Date()): {
   } catch {
     out.push("[Part of this note could not be translated.]");
   }
-  return { text: out.length ? out.join("\n") : "(This note is empty.)", refs };
+  return { text: out.length ? stripTestMarker(out.join("\n")) : "(This note is empty.)", refs };
 }
 
 /** Full AI context for one note: guidance + title + translated body, capped for token safety. */

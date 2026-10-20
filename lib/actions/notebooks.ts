@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { notebooks } from "@/lib/db/schema";
+import { notebooks, notes } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -26,7 +26,17 @@ export async function createNotebook(userId: string, title: string) {
   return newNotebook;
 }
 
+export async function renameNotebook(id: string, title: string) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  await db.update(notebooks).set({ title: trimmed }).where(eq(notebooks.id, id));
+  revalidatePath("/");
+}
+
+// notes.notebook_id cascades on delete, so the notes are moved out to "Notes" (null) first.
+// Deleting a notebook never deletes its notes.
 export async function deleteNotebook(id: string) {
+  await db.update(notes).set({ notebookId: null }).where(eq(notes.notebookId, id));
   await db.delete(notebooks).where(eq(notebooks.id, id));
   revalidatePath("/");
 }

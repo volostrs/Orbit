@@ -104,3 +104,46 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Dashboard greeting: a short, calm fade-and-rise. Disabled for reduced-motion users. */
+@keyframes orbit-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.orbit-rise {
+  animation: orbit-rise 0.45s ease-out both;
+}
+.orbit-rise-late {
+  animation: orbit-rise 0.45s ease-out 0.08s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-rise,
+  .orbit-rise-late {
+    animation: none;
+  }
+}
+
+/* Draft-assist notification: a short rise-and-fade on enter and a quicker fade on exit. */
+@keyframes orbit-notice-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes orbit-notice-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+@keyframes orbit-notice-icon {
+  from { opacity: 0; transform: scale(0.6) rotate(-12deg); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .orbit-notice-icon { animation: orbit-notice-icon 380ms cubic-bezier(0.34, 1.4, 0.64, 1) 120ms both; }
+  .orbit-notice-in { animation: orbit-notice-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .orbit-notice-out { animation: orbit-notice-out 160ms ease-in both; }
+}

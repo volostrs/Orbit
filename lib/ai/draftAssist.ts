@@ -2,7 +2,20 @@
 // and keeps the small browser-side record of what has already been assessed, shown or declined.
 // Pure helpers (no React) so they can be tested directly; storage is guarded for SSR/private mode.
 
-import { inlineText, translateBlocks } from "./translateNote";
+import { inlineText, stripTestMarker, translateBlocks } from "./translateNote";
+
+// Development-only test trigger: while this exact text is in the open note, the notification shows at once
+// (no idle wait, eligibility check, model call, or "don't show again" opt-out). Never active in production.
+export const TEST_MARKER = "[[ORBIT_TEST_AI_NOTIFICATION]]";
+export const testMarkerEnabled = () => process.env.NODE_ENV !== "production";
+export const hasTestMarker = (content: unknown) => {
+  if (!testMarkerEnabled()) return false;
+  try {
+    return JSON.stringify(content)?.includes(TEST_MARKER) ?? false;
+  } catch {
+    return false;
+  }
+};
 
 export const IDLE_MS = 5 * 60 * 1000; // quiet time after the last meaningful edit before assessing
 export const MIN_WORDS = 50; // shorter notes are not drafts worth assessing
@@ -30,7 +43,7 @@ function collectProse(blocks: unknown, out: string[]) {
     if (typeof b !== "object" || b === null) continue;
     const block = b as { type?: string; content?: unknown; children?: unknown };
     if (block.type && PROSE_TYPES.has(block.type)) {
-      const text = inlineText(block.content).trim();
+      const text = stripTestMarker(inlineText(block.content)).trim();
       if (text) out.push(text);
     }
     collectProse(block.children, out);

@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as Icons from "lucide-react";
 import { Palette } from "lucide-react";
-import { DynamicIcon } from "../DynamicIcon";
-import { IconPicker } from "../IconPicker";
+import { DynamicIcon } from "../ui/DynamicIcon";
+import { IconPicker } from "../ui/IconPicker";
 import { FloatingPopover } from "../ui/floating-popover";
 
 // Small built-in palette. Colors are applied as low-alpha tints so text stays readable on any theme.

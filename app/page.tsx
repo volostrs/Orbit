@@ -1,138 +1,119 @@
 import { getNotes } from "@/lib/actions/notes";
 import { getNotebooks } from "@/lib/actions/notebooks";
-import { NewNoteButton } from "@/components/NewNoteButton";
-import {
-  NewNotebookDialog,
-  DeleteNotebookButton,
-} from "@/components/NewNotebookDialog";
-import { NoteActionMenu } from "@/components/NoteActionMenu";
-import { DynamicIcon } from "@/components/DynamicIcon";
-import { AiSidebarToggle } from "@/components/AiSidebarToggle";
-import { NavShell } from "@/components/NavShell";
-import { ThemeSwitch } from "@/components/ThemeSwitch";
-import { NoteWorkspace } from "@/components/NoteWorkspace";
-import { Folder } from "lucide-react";
-import Link from "next/link";
-import type { Note, Notebook } from "@/lib/db/schema";
-
-const sectionLabel = "px-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500";
-
-function NoteRow({
-  note,
-  notebooks,
-  isActive,
-  isAiOpen,
-}: {
-  note: Note;
-  notebooks: Notebook[];
-  isActive: boolean;
-  isAiOpen: boolean;
-}) {
-  return (
-    <div
-      className={`group flex items-center justify-between gap-1 rounded-md px-2 py-1.5 transition-colors ${
-        isActive ? "bg-neutral-800 text-neutral-100" : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
-      }`}
-    >
-      <Link
-        href={`/?noteId=${note.id}${isAiOpen ? "&aiOpen=true" : ""}`}
-        className="flex min-w-0 flex-1 items-center gap-2 text-xs"
-        aria-current={isActive ? "page" : undefined}
-      >
-        <DynamicIcon
-          name={note.icon || "FileText"}
-          color={note.iconColor || "#10b981"}
-          className="h-3.5 w-3.5 shrink-0"
-        />
-        <span className="truncate">{note.title || "Untitled"}</span>
-      </Link>
-      <NoteActionMenu note={note} notebooks={notebooks} isActive={isActive} />
-    </div>
-  );
-}
+import { ToastProvider } from "@/components/ui/toast";
+import { SidebarNav } from "@/components/layout/SidebarNav";
+import { DashboardView } from "@/components/dashboard/DashboardView";
+import { notePreview } from "@/lib/notes/text";
+import { extractHabits } from "@/lib/notes/habits";
+import { listCalendarEvents } from "@/lib/actions/calendar";
+import { NavShell } from "@/components/layout/NavShell";
+import { ThemeSwitch } from "@/components/layout/ThemeSwitch";
+import { NoteWorkspace } from "@/components/notes/NoteWorkspace";
+import { AiChatsView } from "@/components/ai/AiChatsView";
+import { listChatsForUser, listMessages, MAX_CONVERSATIONS_PER_NOTE, type ChatSummary, type StoredMessage } from "@/lib/ai/conversations";
+import { CalendarView } from "@/components/calendar/CalendarView";
 
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ noteId?: string; aiOpen?: string }>;
+  searchParams: Promise<{ noteId?: string; aiOpen?: string; view?: string; chatId?: string }>;
 }) {
   const testUserId = "user_demo_123";
   const notes = await getNotes(testUserId);
   const notebooks = await getNotebooks(testUserId);
-  const { noteId, aiOpen } = await searchParams;
+  const { noteId, aiOpen, view: viewParam, chatId } = await searchParams;
 
+  const view = viewParam === "dashboard" || viewParam === "calendar" || viewParam === "chats" ? viewParam : null;
   const activeNote = notes.find((n) => n.id === noteId) || notes[0];
   const isAiOpen = aiOpen === "true";
 
-  const favoriteNotes = notes.filter((n) => n.isFavorite);
-  const uncategorizedNotes = notes.filter((n) => !n.notebookId);
+  // Saved AI chats. The selected chat must belong to the open note (it is picked from that note's own list, never
+  // taken from the URL on trust); "new" is an unsaved draft; no choice means the note's most recent chat.
+  let allChats: ChatSummary[] = [];
+  try {
+    allChats = await listChatsForUser(testUserId);
+  } catch (err) {
+    console.error("Could not load AI chats:", err instanceof Error ? err.message : err);
+  }
+  const noteChats = activeNote ? allChats.filter((c) => c.noteId === activeNote.id) : [];
+  const activeChatId = chatId === "new" ? null : noteChats.find((c) => c.id === chatId)?.id ?? noteChats[0]?.id ?? null;
+  let initialMessages: StoredMessage[] = [];
+  if (activeChatId) {
+    try {
+      initialMessages = await listMessages(activeChatId);
+    } catch (err) {
+      console.error("Could not load chat messages:", err instanceof Error ? err.message : err);
+    }
+  }
 
-  const row = (note: Note) => (
-    <NoteRow key={note.id} note={note} notebooks={notebooks} isActive={note.id === activeNote?.id} isAiOpen={isAiOpen} />
-  );
+  // Calendar events and habits are only needed for the Dashboard and Calendar pages. A missing events table must not take the page down.
+  let dashEvents: Awaited<ReturnType<typeof listCalendarEvents>> = [];
+  let dashHabits: ReturnType<typeof extractHabits> = [];
+  if (view === "dashboard" || view === "calendar") {
+    try {
+      dashEvents = await listCalendarEvents(testUserId);
+    } catch (err) {
+      console.error("Could not load calendar events:", err instanceof Error ? err.message : err);
+    }
+    dashHabits = extractHabits(notes);
+  }
+
+  // The sidebar never needs note bodies; leaving them out keeps the client payload small.
+  const summaries = notes.map(({ content: _content, ...rest }) => rest);
+  // Dashboard cards need a short text preview per note. It is cut from the content the page already loads, here on
+  // the server, so only the preview string (not the document) is sent to the browser.
+  const dashNotes = view === "dashboard" ? notes.map(({ content, ...rest }) => ({ ...rest, preview: notePreview(content) })) : [];
 
   return (
+    <ToastProvider>
     <main className="flex h-dvh w-screen overflow-hidden bg-black font-sans text-neutral-100 antialiased">
       {/* Navigation Sidebar */}
       <NavShell>
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
-          <div className="flex items-center justify-between">
-            <h1 className="text-xs font-semibold uppercase tracking-widest text-neutral-400">Orbit</h1>
-            <NewNotebookDialog userId={testUserId} />
-          </div>
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto pr-1">
+          <h1 className="text-xs font-semibold uppercase tracking-widest text-neutral-400">Orbit</h1>
 
-          <NewNoteButton userId={testUserId} />
-
-          <nav className="mt-1 flex flex-col gap-4" aria-label="Notes">
-            {notes.length === 0 && notebooks.length === 0 && (
-              <p className="px-1 text-xs leading-5 text-neutral-500">
-                No notes yet. Create one to get started.
-              </p>
-            )}
-
-            {favoriteNotes.length > 0 && (
-              <div className="flex flex-col gap-0.5">
-                <span className={`${sectionLabel} mb-1`}>Favorites</span>
-                {favoriteNotes.map(row)}
-              </div>
-            )}
-
-            {notebooks.map((notebook) => (
-              <div key={notebook.id} className="flex flex-col gap-0.5">
-                <div className="group mb-1 flex items-center justify-between gap-2 px-1 text-neutral-400">
-                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium">
-                    <Folder className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{notebook.title}</span>
-                  </span>
-                  <DeleteNotebookButton notebookId={notebook.id} />
-                </div>
-                <div className="flex flex-col gap-0.5 border-l border-neutral-800 pl-2">
-                  {notes.filter((n) => n.notebookId === notebook.id).map(row)}
-                </div>
-              </div>
-            ))}
-
-            {uncategorizedNotes.length > 0 && (
-              <div className="flex flex-col gap-0.5">
-                <span className={`${sectionLabel} mb-1`}>Notes</span>
-                {uncategorizedNotes.map(row)}
-              </div>
-            )}
-          </nav>
+          <SidebarNav
+            userId={testUserId}
+            notes={summaries}
+            notebooks={notebooks}
+            activeNoteId={activeNote?.id}
+            isAiOpen={isAiOpen}
+            view={view}
+          />
         </div>
 
         <div className="flex flex-col gap-2 border-t border-neutral-800 pt-3">
-          <AiSidebarToggle isAiOpen={isAiOpen} activeNoteId={activeNote?.id} />
           <ThemeSwitch />
         </div>
       </NavShell>
 
-      {/* Workspace Client Wrapper (Editor + AI Sidebar with change review) */}
+      {view === "dashboard" && (
+        <section className="h-full min-w-0 flex-1 overflow-y-auto bg-black">
+          <DashboardView data={{ notes: dashNotes, notebooks, userId: testUserId, events: dashEvents, habits: dashHabits }} />
+        </section>
+      )}
+      {view === "chats" && (
+        <section className="h-full min-w-0 flex-1 overflow-y-auto bg-black">
+          <AiChatsView notes={summaries} chats={allChats} maxChats={MAX_CONVERSATIONS_PER_NOTE} />
+        </section>
+      )}
+      {view === "calendar" && (
+        <section className="h-full min-w-0 flex-1 overflow-y-auto bg-black">
+          <CalendarView userId={testUserId} events={dashEvents} habits={dashHabits} />
+        </section>
+      )}
+      {/* Always rendered (hidden under a view) so the open note's editor is never unmounted. */}
       <NoteWorkspace
         initialNote={activeNote}
         notebooks={notebooks}
         isAiOpen={isAiOpen}
+        hidden={view !== null}
+        chats={noteChats}
+        activeChatId={activeChatId}
+        initialMessages={initialMessages}
+        maxChats={MAX_CONVERSATIONS_PER_NOTE}
       />
     </main>
+    </ToastProvider>
   );
 }

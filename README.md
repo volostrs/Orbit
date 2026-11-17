@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Orbit
+
+**Orbit** is a note-taking and organization application designed to help students with ADHD manage their schoolwork, organize information, and build better habits. It brings notes, organizational tools, habit tracking, and AI-assisted support together in one workspace.
+
+The goal of Orbit is to make staying organized easier without overwhelming students with unnecessary complexity.
+
+## Features
+
+- **Note-taking:** Create and manage notes using the BlockNote rich-text editor.
+- **Organization:** Organize notes and notebooks in a centralized workspace.
+- **Tables and Charts:** Use structured content to organize and present information.
+- **Habit Tracking:** Keep track of habits and build more consistent routines.
+- **AI Assistance:** Interact with AI-powered chat functionality for additional support.
+- **Workspace Navigation:** Navigate between different notes and organizational sections.
+
+## Technology Stack
+
+Orbit was developed using the following technologies:
+
+| Technology | Purpose |
+|---|---|
+| React.js | Frontend development and user interface |
+| Node.js | Backend development |
+| JavaScript / TypeScript | Application programming |
+| Tailwind CSS | Interface styling |
+| BlockNote | Rich-text note editor |
+| PostgreSQL | Database |
+| Neon | PostgreSQL database hosting |
+| Gemini | AI-assisted chat functionality |
 
 ## Getting Started
 
-First, run the development server:
+Follow these instructions to run Orbit locally.
+
+### Prerequisites
+
+Before getting started, make sure you have:
+
+- [Node.js](https://nodejs.org/) installed.
+- npm installed (included with Node.js).
+- Access to a PostgreSQL database.
+- A Gemini API key if you want to use the AI functionality.
+
+### 1. Clone the Repository
+
+```bash
+git clone YOUR_REPOSITORY_URL
+```
+
+Navigate into the project directory:
+
+```bash
+cd orbit
+```
+
+### 2. Install Dependencies
+
+Install the project's dependencies:
+
+```bash
+npm install
+```
+
+### 3. Configure Environment Variables
+
+Create a `.env.local` file in the project root and configure the required environment variables.
+
+Example:
+
+```env
+DATABASE_URL=your_postgresql_connection_string
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+Replace the example values with your actual credentials. The environment variable names must match those expected by the application.
+
+**Important:** Never share or commit API keys, database credentials, or other private environment variables.
+
+### 4. Run the Application
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Once the server starts, open the local development URL displayed in your terminal.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Orbit was developed with a focus on combining note-taking, organization, and AI-assisted functionality into a single application.
 
-## Learn More
+Git was used throughout development to track changes, maintain checkpoints, review modifications, and help troubleshoot issues during implementation.
 
-To learn more about Next.js, take a look at the following resources:
+AI development tools were also used to assist with exploring unfamiliar libraries, understanding implementation problems, and accelerating parts of the coding process.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Goal
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Orbit aims to provide students with ADHD a more approachable way to manage their notes, schoolwork, and habits. By combining organizational tools with AI-assisted functionality, Orbit seeks to make managing everyday academic responsibilities easier.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

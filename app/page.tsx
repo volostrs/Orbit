@@ -1,3 +1,4 @@
+import { getUserId } from "@/lib/auth/visitor";
 import { getNotes } from "@/lib/actions/notes";
 import { getNotebooks } from "@/lib/actions/notebooks";
 import { ToastProvider } from "@/components/ui/toast";
@@ -18,7 +19,7 @@ export default async function Page({
 }: {
   searchParams: Promise<{ noteId?: string; aiOpen?: string; view?: string; chatId?: string }>;
 }) {
-  const testUserId = "user_demo_123";
+  const testUserId = await getUserId(); // the visitor's own id (anonymous cookie in production)
   const notes = await getNotes(testUserId);
   const notebooks = await getNotebooks(testUserId);
   const { noteId, aiOpen, view: viewParam, chatId } = await searchParams;

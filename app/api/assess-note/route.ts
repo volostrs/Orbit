@@ -1,5 +1,7 @@
 import { streamText } from "ai";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { limitAiRequest } from "@/lib/ratelimit";
+import { getUserId } from "@/lib/auth/visitor";
 import { db } from "@/lib/db";
 import { notes } from "@/lib/db/schema";
 import { getChatModel, isMockAi } from "@/lib/ai/model";
@@ -17,15 +19,18 @@ const headers = () => ({ "X-Orbit-AI": isMockAi() ? "mock" : "gemini" });
 const no = (reason: string) => Response.json({ suggest: false, reason }, { headers: headers() });
 
 // Read-only: loads ONE note by id, assesses it, and returns a yes/no. It never writes anything.
-// (No auth exists yet, so this is scoping by note id, not per-user authorization.)
+// The note must belong to the visitor's session (lib/auth/visitor.ts).
 export async function POST(req: Request) {
   try {
+    const limited = await limitAiRequest(req, "assess");
+    if (limited) return limited;
+    const userId = await getUserId();
     const { noteId } = await req.json();
     if (typeof noteId !== "string" || !noteId) return no("no note");
 
     let note: typeof notes.$inferSelect | undefined;
     try {
-      [note] = await db.select().from(notes).where(eq(notes.id, noteId));
+      [note] = await db.select().from(notes).where(and(eq(notes.id, noteId), eq(notes.userId, userId)));
     } catch {
       return no("note not found");
     }

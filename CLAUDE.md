@@ -10,14 +10,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build` / `npm run start`: production build and serve
 - `npm run lint`: ESLint (flat config with `eslint-config-next` core-web-vitals and typescript presets)
 - `npm run db:studio`: open Drizzle Studio
-- `npm run db:push`: runs `drizzle-kit push`, but the installed drizzle-kit (0.18) can't push against drizzle-orm 0.45. Schema changes are therefore written as additive, idempotent SQL files in `lib/db/*.sql` (`ai-conversations.sql`, `calendar-events.sql`, `note-lock.sql`) and applied directly, alongside the matching edit to `lib/db/schema.ts`. There's no migrations folder.
+- `npm run db:push`: runs `drizzle-kit push`. drizzle-kit is 0.31 (it was 0.18, which didn't understand `drizzle.config.ts` or drizzle-orm 0.45), but `push` has not been verified against the live database and could try to alter tables that were created by hand, so don't run it without reviewing the plan. Schema changes are still written as additive, idempotent SQL files in `lib/db/*.sql` (`ai-conversations.sql`, `calendar-events.sql`, `note-lock.sql`) and applied directly, alongside the matching edit to `lib/db/schema.ts`. There's no migrations folder.
 - `npx tsx lib/ai/proposal.check.ts`: the only automated check, a focused script for AI proposal validation. There's no test framework.
 
-`pnpm-workspace.yaml` and `node_modules/.pnpm` show the project is installed with pnpm, but both `package-lock.json` and `pnpm-lock.yaml` are checked in. Don't change either without agreement.
+The project uses **npm** (`package-lock.json` is the only lockfile, so Vercel installs with npm too). Don't reintroduce `pnpm-lock.yaml` or `yarn.lock`. A plain `npm install` works with no flags; `eslint-config-next` is kept on the same major as Next so there is no peer-dependency conflict. `npm run lint` runs but still reports existing code issues (mostly `no-explicit-any` and React Compiler hook rules).
 
 ## Environment
 
-`.env.local` needs `DATABASE_URL` (Neon Postgres) and `GOOGLE_GENERATIVE_AI_API_KEY` (used by `@ai-sdk/google`). `OPENAI_API_KEY` is optional: `@ai-sdk/openai` is installed but not used. `ORBIT_AI_MOCK=1` (ignored in production) swaps Gemini for a deterministic mock model in `lib/ai/mockModel.ts`, so the chat pipeline can be tested without API calls. `lib/db/index.ts` throws at import time if `DATABASE_URL` is missing.
+`.env.local` needs `DATABASE_URL` (Neon Postgres) and `GOOGLE_GENERATIVE_AI_API_KEY` (used by `@ai-sdk/google`). `OPENAI_API_KEY` is optional: `@ai-sdk/openai` is installed but not used. `ORBIT_AI_MOCK=1` (ignored in production) swaps Gemini for a deterministic mock model in `lib/ai/mockModel.ts`, so the chat pipeline can be tested without API calls. `lib/db/index.ts` throws at import time if `DATABASE_URL` is missing. `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` (also accepted as `KV_REST_API_URL` / `KV_REST_API_TOKEN`) back the AI rate limits in `lib/ratelimit.ts`: optional in development (no limiting), required in production, where `/api/chat` and `/api/assess-note` return 503 without them.
+
+**Visitor identity (production).** `proxy.ts` gives each browser an HttpOnly `orbit_uid` cookie (`demo_<uuid>`); `lib/auth/visitor.ts` (`getUserId`, `requireUser`, `ownsNotebook`) reads it, and every server action and API route scopes its queries by it. A `userId` argument from the client must match the session or the call is refused. In development there is no cookie and the user is `user_demo_123`. `/api/ai-edit` returns 404 in production.
 
 ## Stack
 
@@ -29,13 +31,13 @@ Next.js 16 App Router with the React Compiler enabled (`reactCompiler: true` in 
 
 Orbit is a Notion-style notes app with an AI assistant aimed at ADHD students.
 
-**The main app lives at `/` (`app/page.tsx`), not `/dashboard`.** It's an async Server Component that loads notes, notebooks and AI chats for a hardcoded `testUserId = "user_demo_123"` (there's no auth yet) and renders `NavShell` + `SidebarNav` plus the main area. `app/dashboard/` (with `components/layout/app-sidebar.tsx`) is a separate placeholder shell.
+**The main app lives at `/` (`app/page.tsx`), not `/dashboard`.** It's an async Server Component that loads notes, notebooks and AI chats for the current visitor (`getUserId()`: an anonymous cookie in production, `user_demo_123` in development; there are no accounts) and renders `NavShell` + `SidebarNav` plus the main area. `app/dashboard/` (with `components/layout/app-sidebar.tsx`) is a separate placeholder shell.
 
 **State lives in the URL.** `?noteId=...` selects the note, `aiOpen=true` opens the AI panel, `view=dashboard|calendar|chats` shows a full-width view instead of the editor, and `chatId=...` (or `new`) selects an AI chat. Navigation happens through `<Link>`s that rebuild the query string. With no `noteId` the page falls back to the most recently updated note. `NoteWorkspace` stays mounted (hidden with CSS) under a `view` so the editor and its unsaved state are never torn down.
 
 **Views:** `components/dashboard/` (customizable dashboard; layout and images in `lib/dashboard/`, config kept client-side), `components/calendar/CalendarView.tsx` (events from the `calendar_events` table plus habits read from notes via `lib/notes/habits.ts`; scheduled habits are drawn as small colored lines per date, derived on the fly with `habitsOnDate`, solid = done, hollow = not done, and link to the owning note; nothing per occurrence is stored), and `components/ai/AiChatsView.tsx` (all saved chats).
 
-**Data mutations** are Server Actions in `lib/actions/` (`notes`, `notebooks`, `calendar`, `conversations`, `export`; all `"use server"`). They call `revalidatePath("/")` so the server-rendered page refreshes. `getNotes`/`createNote` upsert a placeholder `users` row through `ensureUserExists`, since there's no real user provisioning. Actions take ids directly and don't check ownership. A locked note (`notes.is_locked`) rejects content writes in `updateNote`.
+**Data mutations** are Server Actions in `lib/actions/` (`notes`, `notebooks`, `calendar`, `conversations`, `export`; all `"use server"`). They call `revalidatePath("/")` so the server-rendered page refreshes. `createNote`/`createNotebook`/`createCalendarEvent` upsert a placeholder `users` row, since there's no real user provisioning. Actions take ids from the client but check ownership server-side (every query is scoped by the session user, and notebook ids must be owned too). A locked note (`notes.is_locked`) rejects content writes in `updateNote`.
 
 **Schema** (`lib/db/schema.ts`): `users` (text id) → `notebooks` → `notes`, plus `ai_conversations`/`ai_messages` (max 3 chats per note) and `calendar_events`. `notes.notebookId` is nullable, and a null value means "uncategorized". `notes.content` is `jsonb` holding a BlockNote block array, and `icon` is a lucide icon name rendered via `DynamicIcon`.
 

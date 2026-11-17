@@ -1,6 +1,8 @@
 import { getChatModel, isMockAi } from "@/lib/ai/model";
 import { jsonSchema, streamText, tool } from "ai";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { limitAiRequest } from "@/lib/ratelimit";
+import { getUserId } from "@/lib/auth/visitor";
 import { db } from "@/lib/db";
 import { notes } from "@/lib/db/schema";
 import { buildNoteContextWithRefs, EDIT_GUIDANCE } from "@/lib/ai/translateNote";
@@ -66,6 +68,9 @@ const json = (status: number, body: Record<string, unknown>) =>
 // conversationId means "first prompt of a new chat": the chat is created now, under the 3-per-note limit.
 export async function POST(req: Request) {
   try {
+    const limited = await limitAiRequest(req, "chat");
+    if (limited) return limited;
+    const userId = await getUserId();
     const body = await req.json().catch(() => null);
     const noteId = body?.noteId;
     const text = typeof body?.text === "string" ? body.text.trim() : "";
@@ -75,9 +80,9 @@ export async function POST(req: Request) {
     const retry = body?.retry === true;
 
     // Context is limited to the one note this request is about, loaded fresh from the database and
-    // translated for the model. Nothing else from the workspace is included. (No auth exists yet, so
-    // this is scoping by note id, not per-user authorization.)
-    const [note] = await db.select().from(notes).where(eq(notes.id, noteId));
+    // translated for the model. Nothing else from the workspace is included. The note must belong to
+    // the visitor's session (lib/auth/visitor.ts); someone else's note id gets a 404.
+    const [note] = await db.select().from(notes).where(and(eq(notes.id, noteId), eq(notes.userId, userId)));
     if (!note) return json(404, { error: "Note not found." });
     const built = buildNoteContextWithRefs(note);
     const refs = built.refs;
@@ -93,14 +98,15 @@ export async function POST(req: Request) {
         throw err;
       }
     } else {
-      const found = await getOwnedConversation(note.id, String(body.conversationId));
+      const found = await getOwnedConversation(userId, note.id, String(body.conversationId));
       if (!found) return json(404, { error: "That chat does not belong to this note.", code: "not_found" });
       conversation = found;
     }
 
     const history = await recordUserTurn(conversation.id, text, retry);
 
-    const systemPrompt = `You are Orbit AI, an intelligent executive functioning assistant for ADHD students. Keep your answers concise, clear, and actionable to prevent cognitive overload.\n\n${noteContext}`;
+    const systemPrompt = `You are Orbit AI, an intelligent executive functioning assistant for ADHD students. Keep your answers concise, 
+    clear, and actionable to prevent cognitive overload.\n\n${noteContext}`;
 
     const result = streamText({
       model: await getChatModel(), // Gemini, unless ORBIT_AI_MOCK=1 (dev/test only)

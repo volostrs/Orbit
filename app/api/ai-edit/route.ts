@@ -2,6 +2,10 @@ import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
 
 export async function POST(req: Request) {
+  // Unused by the UI (see InlineAiWidget) and unauthenticated, so it is switched off on public deployments.
+  if (process.env.NODE_ENV === "production") {
+    return Response.json({ error: "Not found." }, { status: 404 });
+  }
   try {
     const { prompt, currentContent } = await req.json();
 

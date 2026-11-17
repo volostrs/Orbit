@@ -3,10 +3,11 @@
 import { and, asc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/auth/visitor";
 import { calendarEvents, users, type CalendarEvent } from "@/lib/db/schema";
 
-// Calendar events for the Calendar page and the Dashboard calendar widget. No auth exists yet, so events are scoped by user id the same
-// way notes are; this is not per-user authorization. Results are {ok} objects so the form can keep its input on failure.
+// Calendar events for the Calendar page and the Dashboard calendar widget. Events are scoped to the session user (the userId
+// argument must match it; see lib/auth/visitor.ts). Results are {ok} objects so the form can keep its input on failure.
 
 const MAX_TITLE = 120;
 const MAX_DESCRIPTION = 1000;
@@ -43,11 +44,13 @@ async function ensureUserExists(userId: string) {
   await db.insert(users).values({ id: userId, name: "Demo User", email: `${userId}@orbit.local` }).onConflictDoNothing();
 }
 
-export async function listCalendarEvents(userId: string) {
+export async function listCalendarEvents(claimedUserId: string) {
+  const userId = await requireUser(claimedUserId);
   return db.select().from(calendarEvents).where(eq(calendarEvents.userId, userId)).orderBy(asc(calendarEvents.eventDate), asc(calendarEvents.createdAt));
 }
 
-export async function createCalendarEvent(userId: string, input: Input): Promise<Result> {
+export async function createCalendarEvent(claimedUserId: string, input: Input): Promise<Result> {
+  const userId = await requireUser(claimedUserId);
   const v = validate(input);
   if (!v.ok) return v;
   try {
@@ -64,7 +67,8 @@ export async function createCalendarEvent(userId: string, input: Input): Promise
 }
 
 // Updates the existing row (including a changed date), so editing never creates a second event.
-export async function updateCalendarEvent(userId: string, id: string, input: Input): Promise<Result> {
+export async function updateCalendarEvent(claimedUserId: string, id: string, input: Input): Promise<Result> {
+  const userId = await requireUser(claimedUserId);
   const v = validate(input);
   if (!v.ok) return v;
   try {
@@ -81,7 +85,8 @@ export async function updateCalendarEvent(userId: string, id: string, input: Inp
   }
 }
 
-export async function deleteCalendarEvent(userId: string, id: string): Promise<{ ok: boolean }> {
+export async function deleteCalendarEvent(claimedUserId: string, id: string): Promise<{ ok: boolean }> {
+  const userId = await requireUser(claimedUserId);
   try {
     await db.delete(calendarEvents).where(and(eq(calendarEvents.id, id), eq(calendarEvents.userId, userId)));
     revalidatePath("/");

@@ -7,7 +7,7 @@
 // - Only plain text is stored. A proposal is never persisted: the stored reply is just its explanatory text
 //   (kind "proposal"), and the reviewable change itself exists only in the live session that produced it.
 //   After a reload the reply is still shown, but nothing executable is restored.
-// (No auth exists yet: this is scoping by note id, not per-user authorization.)
+// Ownership: a note belongs to the session user (see lib/auth/visitor.ts) and chats are only reachable through their note.
 
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -69,14 +69,15 @@ export async function listChatsForUser(userId: string): Promise<ChatSummary[]> {
   return rows.map((r) => toSummary(r.c));
 }
 
-/** The conversation, only if it belongs to that note. */
-export async function getOwnedConversation(noteId: string, conversationId: string): Promise<AiConversation | null> {
+/** The conversation, only if it belongs to that note AND the note belongs to this user. */
+export async function getOwnedConversation(userId: string, noteId: string, conversationId: string): Promise<AiConversation | null> {
   if (!isUuid(noteId) || !isUuid(conversationId)) return null;
-  const [c] = await db
-    .select()
+  const [row] = await db
+    .select({ c: aiConversations })
     .from(aiConversations)
-    .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.noteId, noteId)));
-  return c ?? null;
+    .innerJoin(notes, eq(notes.id, aiConversations.noteId))
+    .where(and(eq(aiConversations.id, conversationId), eq(aiConversations.noteId, noteId), eq(notes.userId, userId)));
+  return row?.c ?? null;
 }
 
 export async function listMessages(conversationId: string): Promise<StoredMessage[]> {
